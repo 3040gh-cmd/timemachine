@@ -224,6 +224,11 @@ summary{cursor:pointer;font-weight:700;font-size:15px}
         <label for="exp">과노출</label><output id="expOut">0</output>
         <input id="exp" type="range" min="0" max="100" step="1" value="0">
       </div>
+      <div class="ctl">
+        <label for="grade">색감</label><span></span>
+        <select id="grade"><option value="none">원래 색</option><option value="blue">퍼렇게 (지하철 광고판)</option><option value="yellow">누렇게 (오래된 사진)</option><option value="green">초록빛 (형광등)</option><option value="mono">흑백</option></select>
+      </div>
+      <div class="ctl" id="gradeAmtRow" hidden><label for="gradeAmt">색감 세기</label><output id="gradeAmtOut">85</output><input id="gradeAmt" type="range" min="0" max="100" step="1" value="85"></div>
       <p class="small">2000년에 가까울수록 화질이 나빠져요. 과노출을 올리면 하얗고 누렇게 날아간 사진이 돼요. 연도별 값은 그 시절 느낌을 낸 근사치예요.</p>
     </div>
 
@@ -354,6 +359,7 @@ const TXCOL={white:{fill:'#FAF8F2',edge:'#15171F'},black:{fill:'#15171F',edge:'#
 const BUILTIN=[
   {name:'흐릿한 캡처',st:{mode:'mush',year:2003,expo:0,ov:{}}},
   {name:'날아간 노출',st:{mode:'mush',year:2007,expo:80,ov:{}}},
+  {name:'퍼런 광고판',st:{mode:'mush',year:2010,expo:30,ov:{},grade:{kind:'blue',amt:85}}},
   {name:'도트 폰카',st:{mode:'pixel',year:2003,expo:0,ov:{}}},
   {name:'원본 그대로',st:{mode:'mush',year:2026,expo:0,ov:{}}}
 ];
@@ -386,7 +392,9 @@ Object.entries(FONTS).forEach(([k,v])=>{const o=document.createElement('option')
 
 function textSettings(){return {on:$('txOn').checked,text:$('txText').value,font:$('txFont').value,size:+$('txSize').value,pos:txPos,color:$('txColor').value,outline:$('txOutline').checked,smear:$('txSmear').checked};}
 function stampSettings(){return {on:$('stampOn').checked,color:$('stampColor').value,m:Math.min(12,Math.max(1,+$('mm').value||1)),d:Math.min(31,Math.max(1,+$('dd').value||1))};}
-function settings(){return {mode,year,expo,ov:Object.assign({},ov),text:textSettings(),stamp:stampSettings(),faceAuto:$('faceAuto').checked};}
+function settings(){return {mode,year,expo,ov:Object.assign({},ov),grade:{kind:$('grade').value,amt:+$('gradeAmt').value},text:textSettings(),stamp:stampSettings(),faceAuto:$('faceAuto').checked};}
+const GRADE_NAMES={blue:'퍼렇게',yellow:'누렇게',green:'초록빛',mono:'흑백'};
+const gradeLabel=st=>st.grade&&st.grade.kind!=='none'?` · 색감 ${GRADE_NAMES[st.grade.kind]}`:'';
 
 function pixelOf(st){
   const y=st.year;let p;
@@ -467,6 +475,15 @@ function overexpose(c,k){
   x.putImageData(img,0,0);
 }
 
+/* color looks: luminance mapped onto a 4-stop palette (blue = backlit subway lightbox) */
+const GRADES={blue:[[10,24,78],[42,98,205],[150,196,250],[232,243,255]],yellow:[[42,30,12],[150,112,52],[230,200,132],[255,246,218]],green:[[10,32,22],[62,122,84],[172,214,172],[240,255,236]],mono:[[14,14,14],[92,92,92],[182,182,182],[246,246,246]]};
+function colorGrade(c,g){
+  const pal=g&&GRADES[g.kind],k=g?g.amt/100:0;if(!pal||k<=0)return;
+  const lut=new Float32Array(768);for(let i=0;i<256;i++){const t=i/255*3,j=Math.min(2,Math.floor(t)),f=t-j;for(let ch=0;ch<3;ch++)lut[i*3+ch]=pal[j][ch]+(pal[j+1][ch]-pal[j][ch])*f;}
+  const x=ctx2(c),img=x.getImageData(0,0,c.width,c.height),d=img.data;
+  for(let i=0;i<d.length;i+=4){const o=Math.round(.299*d[i]+.587*d[i+1]+.114*d[i+2])*3;d[i]+=(lut[o]-d[i])*k;d[i+1]+=(lut[o+1]-d[i+1])*k;d[i+2]+=(lut[o+2]-d[i+2])*k;}
+  x.putImageData(img,0,0);
+}
 /* ---------- mush pipeline ---------- */
 function kuwahara(c,r){
   r=Math.round(r);if(r<1)return;
@@ -500,14 +517,14 @@ function mushDims(S,p,work){
   const L=Math.min(work,Math.max(sw,sh));
   return {lw,lh,ow:Math.round(ar>=1?L:L*ar),oh:Math.round(ar>=1?L/ar:L),full:lowS>=short};
 }
-async function renderMush(S,p,work,stamp,yr,ex){
+async function renderMush(S,p,work,stamp,yr,ex,g){
   const dm=mushDims(S,p,work);let c;
   if(dm.full)c=downscale(S,dm.ow,dm.oh);
   else{const low=downscale(S,dm.lw,dm.lh);if(p.q<.99){await jpeg(low,p.q);await jpeg(low,p.q*.9);}
     c=smoothResize(low,dm.ow,dm.oh);if(p.kuw>.3)kuwahara(c,p.kuw*dm.ow/1200);}
   if(p.sharp>.02||p.con!==1||p.sat!==1)haloTone(c,p.sharp,p.con,p.sat,Math.max(3,Math.round(dm.ow/220)));
-  overexpose(c,ex);if(stamp)drawStamp(c,stamp,yr);
-  if(!dm.full||ex>0)await jpeg(c,Math.max(.6,p.q+.3));
+  overexpose(c,ex);colorGrade(c,g);if(stamp)drawStamp(c,stamp,yr);
+  if(!dm.full||ex>0||(g&&g.kind!=='none'))await jpeg(c,Math.max(.6,p.q+.3));
   return c;
 }
 
@@ -541,10 +558,10 @@ function quantize(c,bits){
     for(let ch=0;ch<3;ch++){const l=L[ch];let v=Math.round(d[i+ch]/255*l+o);v=v<0?0:v>l?l:v;d[i+ch]=v*255/l;}}
   x.putImageData(img,0,0);
 }
-async function renderPixel(S,p,cap,stamp,yr,ex){
+async function renderPixel(S,p,cap,stamp,yr,ex,g){
   const {w,h}=pixDims(S,p,cap),c=downscale(S,w,h),x=ctx2(c);
   if(p.blur>.05&&FILTER_OK){const t=mk(w,h);t.getContext('2d').drawImage(c,0,0);x.filter=`blur(${p.blur.toFixed(2)}px)`;x.drawImage(t,0,0);x.filter='none';}
-  pixelOps(c,p);overexpose(c,ex);if(p.bits)quantize(c,p.bits);if(stamp)drawStamp(c,stamp,yr);
+  pixelOps(c,p);overexpose(c,ex);colorGrade(c,g);if(p.bits)quantize(c,p.bits);if(stamp)drawStamp(c,stamp,yr);
   for(let i=0;i<p.pass;i++)await jpeg(c,p.q*(i?0.9:1));
   return c;
 }
@@ -553,7 +570,7 @@ async function renderWith(S,st,quality,faceList,useCache){
   const P=await prepare(S,faceList,st.text,useCache);
   const stamp=st.stamp.on?st.stamp:null,ex=st.expo/100;
   const work=quality==='full'?MUSH_EXPORT:quality==='video'?(MOBILE?700:900):MUSH_PREVIEW;
-  const c=st.mode==='mush'?await renderMush(P,mushOf(st),work,stamp,st.year,ex):await renderPixel(P,pixelOf(st),quality==='full'?Infinity:quality==='video'?.9:PREVIEW_MP,stamp,st.year,ex);
+  const c=st.mode==='mush'?await renderMush(P,mushOf(st),work,stamp,st.year,ex,st.grade):await renderPixel(P,pixelOf(st),quality==='full'?Infinity:quality==='video'?.9:PREVIEW_MP,stamp,st.year,ex,st.grade);
   if(st.text.on&&!st.text.smear&&st.text.text.trim()){await ensureFont(st.text);drawText(c,st.text);}
   return c;
 }
@@ -564,11 +581,11 @@ const colorLabel=b=>{if(!b)return '1,677만 색';const s=b[0]+b[1]+b[2];return s
 function spec(st){
   if(st.mode==='mush'){
     const p=mushOf(st),m=mushDims(src,p,MUSH_EXPORT);
-    if(m.full)return {hud:`${m.ow}×${m.oh}`,html:'<b>원본 화질</b>'+(st.expo?` · 과노출 ${st.expo}`:'')};
+    if(m.full)return {hud:`${m.ow}×${m.oh}`,html:'<b>원본 화질</b>'+(st.expo?` · 과노출 ${st.expo}`:'')+gradeLabel(st)};
     const lvl=p.kuw>=5?'강함':p.kuw>=2.5?'보통':'약함';
-    return {hud:`${m.lw}×${m.lh} → ${m.ow}×${m.oh}`,html:`<b>${m.lw}×${m.lh}</b>까지 줄였다가 키운 화질 · 번짐 ${lvl} · JPEG ${Math.round(p.q*100)}%`+(st.expo?` · 과노출 ${st.expo}`:'')};
+    return {hud:`${m.lw}×${m.lh} → ${m.ow}×${m.oh}`,html:`<b>${m.lw}×${m.lh}</b>까지 줄였다가 키운 화질 · 번짐 ${lvl} · JPEG ${Math.round(p.q*100)}%`+(st.expo?` · 과노출 ${st.expo}`:'')+gradeLabel(st)};
   }
-  const p=pixelOf(st),{w,h,capped}=pixDims(src,p),ex=[];if(p.hdr>.1)ex.push('HDR');if(p.smooth>.1)ex.push('자동 보정');if(st.expo)ex.push('과노출 '+st.expo);
+  const p=pixelOf(st),{w,h,capped}=pixDims(src,p),ex=[];if(p.hdr>.1)ex.push('HDR');if(p.smooth>.1)ex.push('자동 보정');if(st.expo)ex.push('과노출 '+st.expo);if(st.grade&&st.grade.kind!=='none')ex.push('색감 '+GRADE_NAMES[st.grade.kind]);
   return {hud:`${w}×${h}`,html:`<b>${mpLabel(w,h)}</b> · ${w.toLocaleString()}×${h.toLocaleString()} · ${colorLabel(p.bits)}`+(p.pass?` · JPEG ${Math.round(p.q*100)}%`:' · 압축 없음')+(ex.length?' · '+ex.join(' · '):'')+(capped&&st.year<2026?' · 올린 사진이 더 작아 원본 해상도 사용':'')};
 }
 
@@ -771,7 +788,7 @@ function syncAll(){
   document.querySelectorAll('.seg button[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
   document.querySelectorAll('.seg button[data-pos]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pos===txPos)));
   $('advMush').hidden=mode!=='mush';$('advPixel').hidden=mode!=='pixel';
-  $('exp').value=expo;$('expOut').textContent=expo;$('txSizeOut').textContent=$('txSize').value;$('faceSizeOut').textContent=$('faceSize').value;
+  $('exp').value=expo;$('expOut').textContent=expo;syncGrade();$('txSizeOut').textContent=$('txSize').value;$('faceSizeOut').textContent=$('faceSize').value;
   syncOv();store.set('tm-year',String(year));store.set('tm-mode',mode);store.set('tm-exp',String(expo));
 }
 function syncOv(){
@@ -798,6 +815,9 @@ ovIn('oMp','mp',v=>+v>=1000?Infinity:.05*Math.pow(60/.05,+v/1000));ovIn('oBits',
 ovIn('oQ','q',v=>+v/100);ovIn('oNoise','noise',Number);ovIn('oSharp','sharp',Number);
 $('resetOv').addEventListener('click',()=>{ov={};syncOv();schedule();});
 ['stampOn','stampColor','txOn','txFont','txColor','txOutline','txSmear'].forEach(id=>$(id).addEventListener('change',schedule));
+$('grade').addEventListener('change',()=>{syncGrade();schedule();});
+$('gradeAmt').addEventListener('input',()=>{syncGrade();schedule();});
+function syncGrade(){$('gradeAmtRow').hidden=$('grade').value==='none';$('gradeAmtOut').textContent=$('gradeAmt').value;}
 let txTimer=0;['mm','dd'].forEach(id=>$(id).addEventListener('input',schedule));
 $('txText').addEventListener('input',()=>{clearTimeout(txTimer);txTimer=setTimeout(()=>{if($('txOn').checked)schedule();},250);});
 $('txSize').addEventListener('input',()=>{$('txSizeOut').textContent=$('txSize').value;if($('txOn').checked)schedule();});
@@ -816,6 +836,7 @@ function fixInf(o){const r={};for(const k in o)r[k]=o[k]===null&&(k==='mp'||k===
 function applyPreset(st){
   mode=st.mode||mode;year=st.year||year;expo=st.expo||0;ov=fixInf(st.ov||{});
   if(st.text){const t=st.text;$('txOn').checked=!!t.on;$('txText').value=t.text||'';$('txFont').value=t.font||'dohyeon';$('txSize').value=t.size||9;txPos=t.pos||'bot';$('txColor').value=t.color||'white';$('txOutline').checked=t.outline!==false;$('txSmear').checked=t.smear!==false;}
+  {const g=st.grade||{kind:'none',amt:85};$('grade').value=g.kind;$('gradeAmt').value=g.amt;}
   if(st.stamp){$('stampOn').checked=!!st.stamp.on;$('stampColor').value=st.stamp.color||'#FF9A2E';}
   if('faceAuto' in st&&st.faceAuto!==$('faceAuto').checked){$('faceAuto').checked=st.faceAuto;onFaceAuto();}
   syncAll();schedule();
