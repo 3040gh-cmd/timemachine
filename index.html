@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>화질 타임머신</title>
+<meta name="description" content="사진을 2000년 첫 폰카부터 2026년까지 그 시절 화질로 바꿔 주는 도구. 사진은 기기 안에서만 처리돼요.">
+<meta property="og:title" content="화질 타임머신">
+<meta property="og:description" content="내 사진을 2003년 30만 화소 폰카 화질로. 로그인 없이 바로 써 보세요.">
+<meta property="og:image" content="og.png">
+<meta name="theme-color" content="#0F1017">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Gaegu:wght@700&family=Noto+Sans+KR:wght@400;500;700&family=VT323&display=swap">
+<style>
+/* Layout: photo viewer + warnings + product mockups on the left, a camera-style control column on the right; stacks on phones. Single dark look by choice (digicam LCD). */
+:root{
+  --bg:#0F1017; --panel:#171922; --panel2:#1F2230; --line:#2E3244; --fg:#F3EFE4; --muted:#A8A396; --accent:#F28A2E; --accent-ink:#15171F; --err:#F06A5A; --ok:#5CC9A7;
+  --display:"Do Hyeon","Noto Sans KR",system-ui,sans-serif;
+  --body:"Noto Sans KR",system-ui,-apple-system,sans-serif;
+  --mono:"VT323","Courier New",monospace;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:15px;line-height:1.5}
+.app{max-width:1280px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px 28px;align-items:start}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 24px}
+.eyebrow{margin:0;font-family:var(--mono);font-size:22px;letter-spacing:.06em;color:var(--accent)}
+h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(34px,5vw,48px);line-height:1.05}
+.lead{margin:4px 0 0;color:var(--muted);font-size:14px}
+.privacy{margin:0;color:var(--muted);font-size:14px;max-width:30em}
+
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.viewer{--ar:1.333;--split:50%;position:relative;width:min(100%,calc(70vh * var(--ar)));aspect-ratio:var(--ar);max-width:100%;margin:0 auto;border-radius:14px;overflow:hidden;background:#000;box-shadow:0 0 0 1px var(--line);touch-action:pan-y}
+.viewer.marking{cursor:crosshair}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#proc{clip-path:inset(0 0 0 var(--split))}
+#ovl{pointer-events:none}
+.divider{position:absolute;top:0;bottom:0;left:var(--split);width:2px;margin-left:-1px;background:var(--fg);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.knob{position:absolute;top:50%;left:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:var(--fg);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--mono);font-size:22px;cursor:ew-resize;touch-action:none;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.tag{position:absolute;top:10px;padding:2px 10px;border-radius:8px;background:rgba(15,16,23,.78);font-family:var(--mono);font-size:22px;line-height:1.3;pointer-events:none}
+.tag.l{left:10px;color:var(--fg)} .tag.r{right:10px;color:var(--accent)}
+.hud{position:absolute;left:10px;bottom:10px;padding:2px 10px;border-radius:8px;background:rgba(15,16,23,.78);font-family:var(--mono);font-size:20px;color:var(--fg);font-variant-numeric:tabular-nums;pointer-events:none}
+.busy{position:absolute;right:10px;bottom:10px;padding:2px 10px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700}
+.drop{position:absolute;inset:0;display:grid;place-items:center;background:rgba(242,138,46,.18);border:3px dashed var(--accent);border-radius:14px;font-family:var(--display);font-size:32px}
+.stage-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.stage-bar .note{color:var(--muted);font-size:14px;flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.err{color:var(--err);font-size:14px;margin:0}
+
+.warn{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel)}
+.warn ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.warn li{display:flex;gap:8px;align-items:baseline}
+.warn li::before{content:"";flex:none;width:8px;height:8px;border-radius:2px;background:var(--ok);transform:translateY(-1px)}
+.warn li.bad::before{background:var(--err)}
+.warn .head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.warn h2{margin:0;font-size:15px}
+
+.mock{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:14px;border:1px solid var(--line);background:var(--panel)}
+.mock .head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.mock h2{margin:0;font-size:15px}
+.mockgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.mockgrid figure{margin:0;display:flex;flex-direction:column;gap:6px}
+.mockgrid canvas{width:100%;aspect-ratio:1;max-width:100%;border-radius:10px;display:block}
+.mockgrid figcaption{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:14px}
+.mockgrid button{padding:5px 10px;font-size:13px}
+
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0;font-size:15px;font-weight:700}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
+.seg.three{grid-template-columns:repeat(3,1fr)}
+.seg button{border:0;border-radius:9px;background:transparent;padding:8px 6px;font-weight:500}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.yearrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.year{font-family:var(--mono);font-size:96px;line-height:.8;color:var(--accent);font-variant-numeric:tabular-nums}
+.era{font-family:var(--display);font-size:24px;line-height:1.1;text-align:right}
+.spec{margin:0;color:var(--muted);font-size:14px}
+.spec b{color:var(--fg);font-weight:500}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.ticks{position:relative;height:20px;font-family:var(--mono);font-size:18px;color:var(--muted)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.ticks span:first-child{transform:none}.ticks span:last-child{transform:translateX(-100%)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+button,.btn{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);padding:9px 14px}
+button:hover,.btn:hover{border-color:#4A4F66}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,.btn:focus-within,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chip{padding:5px 10px;border-radius:999px;font-size:13px;display:inline-flex;gap:6px;align-items:baseline}
+.chip .cy{font-family:var(--mono);font-size:18px;line-height:1;color:var(--accent)}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed=true] .cy{color:var(--accent-ink)}
+.chip.user{padding-right:4px}
+.chip .x{border:0;background:transparent;padding:0 6px;font-size:15px;line-height:1;color:var(--muted)}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center}
+label.chk{display:flex;gap:8px;align-items:center;cursor:pointer}
+label.chk input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+.inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:14px}
+.inline input[type=number],select,input[type=text],textarea{font:inherit;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+.inline input[type=number]{width:64px}
+textarea{width:100%;resize:vertical;min-height:72px;font-size:16px}
+.grow{flex:1 1 140px}
+details{border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;font-weight:700;font-size:15px}
+.adv{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.ctl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:14px}
+.ctl output{font-family:var(--mono);font-size:20px;color:var(--accent);font-variant-numeric:tabular-nums}
+.ctl input,.ctl select{grid-column:1/-1}
+.small{font-size:13px;color:var(--muted);margin:0}
+.exports{display:flex;flex-direction:column;gap:8px}
+.exp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;text-align:left;padding:10px 14px}
+.exp .n{font-weight:700}
+.exp .m{font-family:var(--mono);font-size:19px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.exp .d{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.exp.primary .m,.exp.primary .d{color:var(--accent-ink)}
+.sub{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.sub h3{margin:0;font-size:14px}
+.status{min-height:22px;font-size:14px;color:var(--muted);margin:0}
+.fallback{display:flex;flex-direction:column;gap:8px}
+.fallback img,.fallback video{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px}
+.thumbs img{width:100%;border-radius:6px}
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .viewer{width:100%}
+  .year{font-size:80px}
+}
+@media (max-width:560px){.mockgrid{gap:8px}.mockgrid figcaption{flex-direction:column;align-items:stretch}}
+</style>
+
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <div>
+      <p class="eyebrow">30만 화소 · 화질 도구</p>
+      <h1>화질 타임머신</h1>
+      <p class="lead">사진을 올리고 연도를 바꿔 보세요. 2000년 첫 폰카부터 2026년까지 그 시절 화질로 바뀌어요.</p>
+    </div>
+    <p class="privacy">사진은 이 기기 안에서만 처리돼요. 얼굴 찾기도 기기 안에서 돌아가고, 어디에도 업로드되지 않아요.</p>
+  </header>
+
+  <section class="stage" aria-label="미리보기">
+    <div class="viewer" id="viewer">
+      <canvas id="orig" aria-hidden="true"></canvas>
+      <canvas id="proc" role="img" aria-label="선택한 연도의 화질로 바꾼 사진"></canvas>
+      <canvas id="ovl" aria-hidden="true"></canvas>
+      <div class="divider" id="divider"><div class="knob" id="knob" title="좌우로 끌어 원본과 비교">⇆</div></div>
+      <span class="tag l" id="tagL">원본</span>
+      <span class="tag r" id="tagR">2003</span>
+      <span class="hud" id="hud">—</span>
+      <span class="busy" id="busy" hidden>처리 중</span>
+      <div class="drop" id="drop" hidden>여기에 사진을 놓으세요</div>
+    </div>
+    <div class="stage-bar">
+      <label class="btn primary" for="file"><span id="fileLabel">사진 올리기</span><input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif,image/bmp"></label>
+      <label class="btn" for="cam" id="camBtn" hidden>카메라로 찍기<input id="cam" type="file" accept="image/*" capture="environment"></label>
+      <button type="button" id="quickSave" class="primary">변환한 사진 저장</button>
+      <button type="button" id="sampleBtn">예시 사진</button>
+      <span class="note" id="pickHint" hidden>갤럭시에서 ‘내 파일’이 뜨면 ‘이미지’를 누르세요. 카메라로 찍은 사진은 ‘Camera’ 폴더에 있어요.</span>
+      <span class="note" id="srcNote">예시 사진이에요. 내 사진을 올리거나, 끌어다 놓거나, 붙여 넣으세요.</span>
+    </div>
+    <div class="ctl" style="max-width:560px">
+      <label for="split">원본 비교 위치</label><output id="splitOut">50%</output>
+      <input id="split" type="range" min="0" max="100" step="1" value="50">
+    </div>
+    <p class="err" id="err" role="alert" hidden></p>
+    <p class="status" id="status" aria-live="polite"></p>
+    <div class="fallback" id="fallback" hidden>
+      <div id="fallbackBody"></div>
+      <p class="small" id="fallbackNote">이미지를 길게 누르거나 우클릭해서 저장하세요.</p>
+    </div>
+
+    <div class="warn" aria-live="polite">
+      <div class="head"><h2>인쇄 점검</h2><label class="chk"><input type="checkbox" id="warnShow"> 문제 영역 표시</label></div>
+      <ul id="warnList"></ul>
+      <p class="small" id="warnLegend" hidden>분홍 = 하얗게 날아간 곳, 하늘색 = 새까맣게 묻힌 곳</p>
+    </div>
+
+    <section class="mock" aria-label="상품 목업">
+      <div class="head">
+        <h2>상품 목업</h2>
+        <div class="inline"><label for="shirtColor">티셔츠 색</label>
+          <select id="shirtColor"><option value="#F4F2EC">화이트</option><option value="#E8DFC9">크림</option><option value="#9A9DA3">그레이</option><option value="#1E1F24">블랙</option></select></div>
+      </div>
+      <div class="mockgrid">
+        <figure><canvas id="mkShirt" width="1080" height="1080" role="img" aria-label="티셔츠 목업"></canvas><figcaption>티셔츠<button type="button" data-mock="shirt">저장</button></figcaption></figure>
+        <figure><canvas id="mkCase" width="1080" height="1080" role="img" aria-label="폰케이스 목업"></canvas><figcaption>폰케이스<button type="button" data-mock="case">저장</button></figcaption></figure>
+        <figure><canvas id="mkSticker" width="1080" height="1080" role="img" aria-label="스티커 목업"></canvas><figcaption>스티커<button type="button" data-mock="sticker">저장</button></figcaption></figure>
+      </div>
+      <p class="small">상세페이지와 SNS용 미리보기 그림이에요. 실제 인쇄 색은 제작처 샘플로 꼭 확인하세요.</p>
+    </section>
+  </section>
+
+  <aside class="panel">
+    <div class="card">
+      <h2>느낌 프리셋</h2>
+      <div class="chips" id="presetChips"></div>
+      <div class="inline"><input type="text" id="presetName" class="grow" maxlength="20" placeholder="지금 설정에 이름 붙이기" aria-label="프리셋 이름"><button type="button" id="presetSave">저장</button></div>
+      <p class="small">저장한 설정은 이 기기 브라우저에만 남아요.</p>
+    </div>
+
+    <div class="card">
+      <div class="seg" role="group" aria-label="화질 스타일">
+        <button type="button" data-mode="mush" aria-pressed="true">뭉개진 저화질</button>
+        <button type="button" data-mode="pixel" aria-pressed="false">도트 픽셀</button>
+      </div>
+      <div class="yearrow">
+        <span class="year" id="year" aria-live="polite">2003</span>
+        <span class="era" id="era">30만 화소</span>
+      </div>
+      <p class="spec" id="spec"></p>
+      <input id="ys" type="range" min="2000" max="2026" step="1" value="2003" aria-label="연도">
+      <div class="ticks" aria-hidden="true">
+        <span style="left:0">2000</span><span style="left:19.23%">2005</span><span style="left:38.46%">2010</span><span style="left:57.69%">2015</span><span style="left:76.92%">2020</span><span style="left:100%">2026</span>
+      </div>
+      <div class="chips" id="chips" aria-label="시대 바로가기"></div>
+      <div class="ctl">
+        <label for="exp">과노출</label><output id="expOut">0</output>
+        <input id="exp" type="range" min="0" max="100" step="1" value="0">
+      </div>
+      <p class="small">2000년에 가까울수록 화질이 나빠져요. 과노출을 올리면 하얗고 누렇게 날아간 사진이 돼요. 연도별 값은 그 시절 느낌을 낸 근사치예요.</p>
+    </div>
+
+    <div class="card">
+      <h2>문구 넣기</h2>
+      <label class="chk"><input type="checkbox" id="txOn"> 사진 위에 문구 넣기</label>
+      <textarea id="txText" rows="3" aria-label="문구">ㄴㅓ무 선명한
+ㅅㅔ상이 ㅍㅣ곤ㅎㅐ</textarea>
+      <div class="inline"><button type="button" id="txAlien">외계어로 바꾸기</button><span>‘가끔’ → ‘ㄱㅏ끔’</span></div>
+      <div class="inline">
+        <label for="txFont">글꼴</label><select id="txFont" class="grow"></select>
+        <label for="txColor">색</label><select id="txColor"><option value="white">흰색</option><option value="black">검정</option><option value="orange">주황</option><option value="yellow">노랑</option></select>
+      </div>
+      <div class="seg three" role="group" aria-label="문구 위치">
+        <button type="button" data-pos="top">위</button><button type="button" data-pos="mid">가운데</button><button type="button" data-pos="bot" aria-pressed="true">아래</button>
+      </div>
+      <div class="ctl"><label for="txSize">글자 크기</label><output id="txSizeOut">9</output><input id="txSize" type="range" min="3" max="25" step="0.5" value="9"></div>
+      <label class="chk"><input type="checkbox" id="txOutline" checked> 테두리</label>
+      <label class="chk"><input type="checkbox" id="txSmear" checked> 문구도 같이 뭉개기</label>
+      <p class="small">글꼴은 모두 상업적으로 쓸 수 있는 무료 글꼴(OFL)이에요. 노래 가사나 유명 대사는 넣지 마세요.</p>
+    </div>
+
+    <div class="card">
+      <h2>얼굴 가리기</h2>
+      <label class="chk"><input type="checkbox" id="faceAuto"> 사진 속 얼굴 자동으로 찾아 가리기</label>
+      <p class="small" id="faceStatus">처음 켜면 얼굴 찾기 모델(약 5MB)을 불러와요.</p>
+      <button type="button" id="faceManual" aria-pressed="false">직접 가리기 모드 켜기</button>
+      <div class="ctl"><label for="faceSize">직접 가릴 크기</label><output id="faceSizeOut">8</output><input id="faceSize" type="range" min="2" max="25" step="0.5" value="8"></div>
+      <div class="inline"><button type="button" id="faceClear">가린 곳 모두 지우기</button></div>
+      <p class="small">직접 가리기 모드에서 사진을 누르면 그 자리가 가려지고, 가린 곳을 다시 누르면 지워져요. 모르는 사람 얼굴이 알아볼 수 있게 나오면 판매용으로 쓰면 안 돼요.</p>
+    </div>
+
+    <div class="card">
+      <h2>디카 날짜 스탬프</h2>
+      <label class="chk"><input type="checkbox" id="stampOn"> 오른쪽 아래에 날짜 넣기</label>
+      <div class="inline">
+        <label for="mm">월</label><input id="mm" type="number" min="1" max="12" inputmode="numeric">
+        <label for="dd">일</label><input id="dd" type="number" min="1" max="31" inputmode="numeric">
+        <select id="stampColor" aria-label="스탬프 색"><option value="#FF9A2E">주황</option><option value="#FFD23F">노랑</option><option value="#FF4A3D">빨강</option></select>
+      </div>
+      <details>
+        <summary>세부 조정</summary>
+        <div class="adv" id="advMush">
+          <div class="ctl"><label for="mLow">줄이는 크기 (짧은 변)</label><output id="mLowOut"></output><input id="mLow" type="range" min="60" max="1400" step="10"></div>
+          <div class="ctl"><label for="mKuw">물감처럼 번짐</label><output id="mKuwOut"></output><input id="mKuw" type="range" min="0" max="10" step="0.5"></div>
+          <div class="ctl"><label for="mSharp">테두리 과선명</label><output id="mSharpOut"></output><input id="mSharp" type="range" min="0" max="3" step="0.1"></div>
+          <div class="ctl"><label for="mQ">JPEG 품질</label><output id="mQOut"></output><input id="mQ" type="range" min="5" max="100" step="1"></div>
+        </div>
+        <div class="adv" id="advPixel" hidden>
+          <div class="ctl"><label for="oMp">화소</label><output id="oMpOut"></output><input id="oMp" type="range" min="0" max="1000" step="1"></div>
+          <div class="ctl"><label for="oBits">색 수</label><span></span>
+            <select id="oBits"><option value="332">256색</option><option value="444">4,096색</option><option value="565">6.5만 색</option><option value="888">1,677만 색</option></select></div>
+          <div class="ctl"><label for="oQ">JPEG 품질</label><output id="oQOut"></output><input id="oQ" type="range" min="5" max="100" step="1"></div>
+          <div class="ctl"><label for="oNoise">노이즈</label><output id="oNoiseOut"></output><input id="oNoise" type="range" min="0" max="40" step="0.5"></div>
+          <div class="ctl"><label for="oSharp">선명도 과보정</label><output id="oSharpOut"></output><input id="oSharp" type="range" min="0" max="1" step="0.05"></div>
+        </div>
+        <button type="button" id="resetOv" style="margin-top:12px">연도 기본값으로 되돌리기</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>저장하기</h2>
+      <div class="exports" id="exports"></div>
+      <div class="sub">
+        <h3>변환 영상</h3>
+        <p class="small">원본이 2026년부터 2000년까지 점점 뭉개지는 7초 세로 영상이에요. 릴스·틱톡용.</p>
+        <button type="button" id="videoBtn">변환 영상 만들기</button>
+      </div>
+      <div class="sub">
+        <h3>여러 장 한꺼번에</h3>
+        <div class="inline"><label for="batchPreset">크기</label><select id="batchPreset" class="grow"></select></div>
+        <label class="btn" for="batchFiles">사진 여러 장 고르기<input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif,image/bmp" multiple></label>
+        <p class="small">지금 설정(연도, 과노출, 문구, 자동 얼굴 가리기)을 모두 똑같이 적용해 ZIP 파일 하나로 저장해요.</p>
+      </div>
+      <p class="small">진행 상황과 결과는 사진 바로 아래에 나와요.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const FACEAPI_URL='vendor/face-api.js';
+const MODEL_URL='models';
+const D={bits:null,q:1,pass:0,noise:0,chroma:0,blur:0,sharp:0,con:1,sat:1,tint:[1,1,1],vig:0,hdr:0,smooth:0};
+const K=o=>Object.assign({},D,o);
+const KF=[
+  K({y:2000,mp:.11,bits:[3,3,2],q:.30,pass:2,noise:16,chroma:1,blur:.9,sharp:0,con:1.30,sat:.78,tint:[1,1.06,.9],vig:.45,era:'첫 폰카'}),
+  K({y:2003,mp:.3,bits:[4,4,4],q:.40,pass:2,noise:13,chroma:.9,blur:.7,sharp:.1,con:1.22,sat:.86,tint:[1.04,1.03,.94],vig:.35,era:'30만 화소'}),
+  K({y:2005,mp:1.3,bits:[5,6,5],q:.55,pass:1,noise:10,chroma:.7,blur:.5,sharp:.35,con:1.15,sat:.95,tint:[1.05,1,.95],vig:.25,era:'메가픽셀'}),
+  K({y:2007,mp:2,q:.65,pass:1,noise:8,chroma:.6,blur:.35,sharp:.55,con:1.12,sat:1,tint:[1.04,1,.97],vig:.18,era:'디카폰'}),
+  K({y:2010,mp:5,q:.78,pass:1,noise:5,chroma:.4,blur:.15,sharp:.45,con:1.08,sat:1.05,vig:.1,era:'첫 스마트폰'}),
+  K({y:2013,mp:13,q:.86,pass:1,noise:3.5,chroma:.3,blur:.05,sharp:.35,con:1.06,sat:1.08,vig:.06,era:'고화소 경쟁'}),
+  K({y:2016,mp:12,q:.9,pass:1,noise:2.2,chroma:.2,sharp:.3,con:1.04,sat:1.1,vig:.04,hdr:.25,era:'HDR'}),
+  K({y:2020,mp:12,q:.93,pass:1,noise:1.2,chroma:.1,sharp:.3,con:1.03,sat:1.12,vig:.02,hdr:.35,smooth:.25,era:'야간모드'}),
+  K({y:2023,mp:50,q:.95,pass:1,noise:.6,chroma:.05,sharp:.2,con:1.02,sat:1.08,hdr:.3,smooth:.2,era:'AI 보정'}),
+  K({y:2026,mp:Infinity,era:'지금'})
+];
+const MK=[
+  {y:2000,low:100,q:.20,kuw:7,sharp:1.9,con:1.12,sat:1.18},
+  {y:2003,low:140,q:.26,kuw:6,sharp:1.7,con:1.10,sat:1.16},
+  {y:2005,low:190,q:.33,kuw:5,sharp:1.5,con:1.09,sat:1.14},
+  {y:2007,low:250,q:.40,kuw:4.5,sharp:1.3,con:1.08,sat:1.12},
+  {y:2010,low:340,q:.50,kuw:3.5,sharp:1.1,con:1.06,sat:1.1},
+  {y:2013,low:460,q:.60,kuw:2.5,sharp:.85,con:1.05,sat:1.08},
+  {y:2016,low:620,q:.70,kuw:1.8,sharp:.65,con:1.04,sat:1.06},
+  {y:2020,low:860,q:.80,kuw:1.2,sharp:.45,con:1.03,sat:1.05},
+  {y:2023,low:1200,q:.88,kuw:.6,sharp:.3,con:1.02,sat:1.03},
+  {y:2026,low:Infinity,q:1,kuw:0,sharp:0,con:1,sat:1}
+];
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+const MOBILE=(navigator.maxTouchPoints||0)>0&&Math.min(screen.width,screen.height)<900;
+const PREVIEW_MP=MOBILE?1.5:2.5,SRC_MAX=MOBILE?2560:4096,MUSH_PREVIEW=MOBILE?1000:1200,MUSH_EXPORT=1600,MAX_AREA=MOBILE?12e6:16e6;
+const PRESETS=[
+  {id:'shirt',name:'티셔츠 앞판',long:4800,d:'16인치 @300DPI',primary:true},
+  {id:'case',name:'폰케이스',long:2400,d:'8인치 @300DPI · 기종 템플릿에 맞춰 잘라 쓰세요'},
+  {id:'sticker',name:'스티커',long:1200,d:'4인치 @300DPI'},
+  {id:'sns',name:'SNS 게시용',long:2160,d:'릴스·피드용 큰 사이즈'},
+  {id:'compare',name:'전후 비교 이미지',long:null,d:'원본과 나란히 · 홍보 게시물용'},
+  {id:'raw',name:'결과 그대로',long:null,d:'추가 확대 없이 처리한 크기 그대로'}
+];
+const FONTS={dohyeon:{f:'Do Hyeon',w:400,label:'도현체'},blackhan:{f:'Black Han Sans',w:400,label:'검은고딕'},gaegu:{f:'Gaegu',w:700,label:'개구체 (손글씨)'},noto:{f:'Noto Sans KR',w:700,label:'노토 산스 굵게'}};
+const TXCOL={white:{fill:'#FAF8F2',edge:'#15171F'},black:{fill:'#15171F',edge:'#FAF8F2'},orange:{fill:'#F28A2E',edge:'#15171F'},yellow:{fill:'#FFE14D',edge:'#15171F'}};
+const BUILTIN=[
+  {name:'흐릿한 캡처',st:{mode:'mush',year:2003,expo:0,ov:{}}},
+  {name:'날아간 노출',st:{mode:'mush',year:2007,expo:80,ov:{}}},
+  {name:'도트 폰카',st:{mode:'pixel',year:2003,expo:0,ov:{}}},
+  {name:'원본 그대로',st:{mode:'mush',year:2026,expo:0,ov:{}}}
+];
+
+/* ---------- small utils ---------- */
+const lerp=(a,b,t)=>a+(b-a)*t;
+/* every work canvas is tracked and released right after use: phone browsers run out of canvas memory otherwise */
+let temps=[],active=0;
+const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;temps.push(c);return c;};
+function keepSet(){return new Set([src,lastOut,prepCache.c,warnMask].filter(Boolean));}
+function sweep(){if(active>0||working)return;const k=keepSet(),rest=[];for(const c of temps){if(k.has(c))rest.push(c);else{c.width=0;c.height=0;}}temps=rest;}
+function releaseSince(mark,keep){const k=keepSet();(keep||[]).forEach(c=>k.add(c));const tail=temps.splice(mark);for(const c of tail){if(k.has(c))temps.push(c);else{c.width=0;c.height=0;}}}
+const ctx2=c=>c.getContext('2d',{willReadFrequently:true});
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const FILTER_OK=(()=>{try{return 'filter' in document.createElement('canvas').getContext('2d');}catch(e){return false;}})();
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function seg(list,y){y=Math.max(2000,Math.min(2026,y));let i=0;while(i<list.length-2&&list[i+1].y<=y)i++;const a=list[i],b=list[i+1];return {a,b,t:Math.min(1,(y-a.y)/(b.y-a.y))};}
+const eraOf=y=>y>=2026?KF[KF.length-1]:seg(KF,y).a;
+const pad=n=>String(n).padStart(2,'0');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const toBlob=(c,type,q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('encode')),type,q));
+
+/* ---------- state ---------- */
+let src=null,srcId=0,year=2003,mode='mush',expo=0,ov={},dl=null;
+let faces=[],autoFaces=[],manualMode=false,txPos='bot';
+let lastOut=null;
+{const y=+store.get('tm-year');if(y>=2000&&y<=2026)year=y;const m=store.get('tm-mode');if(m==='pixel'||m==='mush')mode=m;const e=+store.get('tm-exp');if(e>=0&&e<=100)expo=e;}
+const now=new Date();$('mm').value=now.getMonth()+1;$('dd').value=now.getDate();
+Object.entries(FONTS).forEach(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v.label;$('txFont').append(o);});
+
+function textSettings(){return {on:$('txOn').checked,text:$('txText').value,font:$('txFont').value,size:+$('txSize').value,pos:txPos,color:$('txColor').value,outline:$('txOutline').checked,smear:$('txSmear').checked};}
+function stampSettings(){return {on:$('stampOn').checked,color:$('stampColor').value,m:Math.min(12,Math.max(1,+$('mm').value||1)),d:Math.min(31,Math.max(1,+$('dd').value||1))};}
+function settings(){return {mode,year,expo,ov:Object.assign({},ov),text:textSettings(),stamp:stampSettings(),faceAuto:$('faceAuto').checked};}
+
+function pixelOf(st){
+  const y=st.year;let p;
+  if(y>=2026)p=Object.assign({},KF[KF.length-1]);
+  else{const {a,b,t}=seg(KF,y),n=k=>lerp(a[k],b[k],t),bm=isFinite(b.mp)?b.mp:200;
+    p={mp:Math.exp(lerp(Math.log(a.mp),Math.log(bm),t)),bits:a.bits,q:n('q'),pass:a.pass,noise:n('noise'),chroma:n('chroma'),blur:n('blur'),sharp:n('sharp'),con:n('con'),sat:n('sat'),tint:a.tint.map((v,k)=>lerp(v,b.tint[k],t)),vig:n('vig'),hdr:n('hdr'),smooth:n('smooth')};}
+  const o=st.ov;
+  if('mp' in o)p.mp=o.mp;if('bits' in o)p.bits=o.bits;if('q' in o){p.q=o.q;if(!p.pass)p.pass=1;}if('noise' in o)p.noise=o.noise;if('sharp' in o)p.sharp=o.sharp;
+  return p;
+}
+function mushOf(st){
+  const y=st.year;let p;
+  if(y>=2026)p=Object.assign({},MK[MK.length-1]);
+  else{const {a,b,t}=seg(MK,y),n=k=>lerp(a[k],b[k],t),bl=isFinite(b.low)?b.low:1800;
+    p={low:Math.exp(lerp(Math.log(a.low),Math.log(bl),t)),q:n('q'),kuw:n('kuw'),sharp:n('sharp'),con:n('con'),sat:n('sat')};}
+  ['low','kuw','sharp','q'].forEach(k=>{if(('m'+k) in st.ov)p[k]=st.ov['m'+k];});
+  return p;
+}
+
+/* ---------- image helpers ---------- */
+function downscale(s,w,h){
+  let cur=s,cw=s.width,ch=s.height;
+  while(cw/2>=w&&ch/2>=h){cw=Math.round(cw/2);ch=Math.round(ch/2);const t=mk(cw,ch),x=t.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(cur,0,0,cw,ch);cur=t;}
+  const o=mk(w,h),x=ctx2(o);x.imageSmoothingQuality='high';x.drawImage(cur,0,0,w,h);return o;
+}
+function smoothResize(s,w,h){if(w<=s.width&&h<=s.height)return downscale(s,w,h);const o=mk(w,h),x=ctx2(o);x.imageSmoothingQuality='high';x.drawImage(s,0,0,w,h);return o;}
+function softBlur(c,f){const w=Math.max(2,Math.round(c.width/f)),h=Math.max(2,Math.round(c.height/f));return smoothResize(downscale(c,w,h),c.width,c.height);}
+async function jpeg(c,q){const x=ctx2(c),blob=await toBlob(c,'image/jpeg',Math.max(.05,Math.min(1,q))),bmp=await createImageBitmap(blob);x.drawImage(bmp,0,0);if(bmp.close)bmp.close();}
+function drawStamp(c,s,yr){
+  const x=c.getContext('2d'),fs=Math.max(10,Math.round(Math.min(c.width,c.height)*.08));
+  x.save();x.font=`${fs}px VT323, "Courier New", monospace`;x.textAlign='right';x.textBaseline='alphabetic';x.shadowColor=s.color;x.shadowBlur=fs*.2;x.fillStyle=s.color;
+  x.fillText(`’${pad(yr%100)} ${pad(s.m)} ${pad(s.d)}`,c.width-fs*.6,c.height-fs*.45);x.restore();
+}
+async function ensureFont(t){const F=FONTS[t.font]||FONTS.dohyeon;if(!document.fonts)return;try{await Promise.race([document.fonts.load(`${F.w} 64px "${F.f}"`,t.text||'가'),sleep(2500)]);}catch(e){}}
+function drawText(c,t){
+  const lines=t.text.replace(/\r/g,'').split('\n');if(!t.text.trim())return;
+  const x=c.getContext('2d'),W=c.width,H=c.height,F=FONTS[t.font]||FONTS.dohyeon,col=TXCOL[t.color]||TXCOL.white;
+  let fs=Math.max(8,t.size/100*W);const font=s=>`${F.w} ${s}px "${F.f}", "Noto Sans KR", sans-serif`;
+  x.save();x.font=font(fs);const mw=Math.max(...lines.map(l=>x.measureText(l).width));if(mw>W*.92){fs*=W*.92/mw;x.font=font(fs);}
+  const lh=fs*1.18,total=lh*lines.length,y0=t.pos==='top'?H*.06:t.pos==='mid'?(H-total)/2:H-H*.07-total;
+  x.textAlign='center';x.textBaseline='top';x.lineJoin='round';
+  lines.forEach((l,i)=>{const y=y0+i*lh;if(t.outline){x.lineWidth=fs*.16;x.strokeStyle=col.edge;x.strokeText(l,W/2,y);}x.fillStyle=col.fill;x.fillText(l,W/2,y);});
+  x.restore();
+}
+function blurFaces(c,list){
+  const x=c.getContext('2d'),W=c.width,H=c.height;
+  for(const f of list){
+    const R=f.r*W*1.2,cx=f.x*W,cy=f.y*H,ry=R*1.25;
+    const bx=Math.max(0,Math.floor(cx-R)),by=Math.max(0,Math.floor(cy-ry)),bw=Math.min(W,Math.ceil(cx+R))-bx,bh=Math.min(H,Math.ceil(cy+ry))-by;
+    if(bw<3||bh<3)continue;
+    const crop=mk(bw,bh);crop.getContext('2d').drawImage(c,bx,by,bw,bh,0,0,bw,bh);
+    const tw=5,th=Math.max(3,Math.round(5*bh/bw)),blur=smoothResize(downscale(crop,tw,th),bw,bh);
+    x.save();x.beginPath();x.ellipse(cx,cy,R,ry,0,0,Math.PI*2);x.clip();x.drawImage(blur,bx,by);x.restore();
+  }
+}
+/* prepared source: faces hidden (+ text when it should be smeared too) */
+let prepCache={key:'',c:null};
+async function prepare(S,faceList,t,useCache){
+  const withText=t&&t.on&&t.smear&&t.text.trim();
+  if(!faceList.length&&!withText)return S;
+  const key=useCache?JSON.stringify([srcId,faceList,withText?t:null]):'';
+  if(useCache&&prepCache.key===key&&prepCache.c)return prepCache.c;
+  const c=mk(S.width,S.height);c.getContext('2d').drawImage(S,0,0);
+  if(faceList.length)blurFaces(c,faceList);
+  if(withText){await ensureFont(t);drawText(c,t);}
+  if(useCache)prepCache={key,c};
+  return c;
+}
+function overexpose(c,k){
+  if(k<=0)return;
+  const glow=softBlur(c,10),x=ctx2(c),w=c.width,h=c.height,img=x.getImageData(0,0,w,h),d=img.data,gd=ctx2(glow).getImageData(0,0,w,h).data;
+  const gain=1+1.7*k,lift=.03*k,warmB=1-.3*k,warmG=1-.05*k,gl=.4*k;
+  for(let i=0;i<d.length;i+=4){
+    for(let ch=0;ch<3;ch++){let v=d[i+ch]/255*gain+lift;const gv=gd[i+ch]/255*gain;v=1-(1-v)*(1-Math.min(1,gv)*gl);d[i+ch]=v*255;}
+    const L=(d[i]+d[i+1]+d[i+2])/3,ds=Math.min(1,L/255)*k*.5;
+    d[i]=d[i]+(L-d[i])*ds;d[i+1]=(d[i+1]+(L-d[i+1])*ds)*warmG;d[i+2]=(d[i+2]+(L-d[i+2])*ds)*warmB;
+  }
+  x.putImageData(img,0,0);
+}
+
+/* ---------- mush pipeline ---------- */
+function kuwahara(c,r){
+  r=Math.round(r);if(r<1)return;
+  const x=ctx2(c),w=c.width,h=c.height,img=x.getImageData(0,0,w,h),d=img.data,W1=w+1,N=W1*(h+1);
+  const IR=new Float64Array(N),IG=new Float64Array(N),IB=new Float64Array(N),IL=new Float64Array(N),IQ=new Float64Array(N);
+  for(let y=0;y<h;y++){let sr=0,sg=0,sb=0,sl=0,sq=0;const row=(y+1)*W1,up=y*W1;
+    for(let xx=0;xx<w;xx++){const i=(y*w+xx)*4,R=d[i],G=d[i+1],B=d[i+2],L=.299*R+.587*G+.114*B;
+      sr+=R;sg+=G;sb+=B;sl+=L;sq+=L*L;const k=row+xx+1,u=up+xx+1;IR[k]=IR[u]+sr;IG[k]=IG[u]+sg;IB[k]=IB[u]+sb;IL[k]=IL[u]+sl;IQ[k]=IQ[u]+sq;}}
+  const out=new Uint8ClampedArray(d.length);
+  for(let y=0;y<h;y++){const ya=Math.max(0,y-r),yb=y+1,yc=y,yd=Math.min(h,y+r+1);
+    for(let xx=0;xx<w;xx++){const xa=Math.max(0,xx-r),xb=xx+1,xc=xx,xd=Math.min(w,xx+r+1);
+      let best=Infinity,bi=0,by0=0,by1=0,bx0=0,bx1=0;
+      for(let q=0;q<4;q++){const x0=q&1?xc:xa,x1=q&1?xd:xb,y0=q&2?yc:ya,y1=q&2?yd:yb,n=(x1-x0)*(y1-y0);
+        const a=y1*W1+x1,b=y0*W1+x1,cc=y1*W1+x0,e=y0*W1+x0,m=(IL[a]-IL[b]-IL[cc]+IL[e])/n,v=(IQ[a]-IQ[b]-IQ[cc]+IQ[e])/n-m*m;
+        if(v<best){best=v;bi=n;by0=y0;by1=y1;bx0=x0;bx1=x1;}}
+      const a=by1*W1+bx1,b=by0*W1+bx1,cc=by1*W1+bx0,e=by0*W1+bx0,o=(y*w+xx)*4;
+      out[o]=(IR[a]-IR[b]-IR[cc]+IR[e])/bi;out[o+1]=(IG[a]-IG[b]-IG[cc]+IG[e])/bi;out[o+2]=(IB[a]-IB[b]-IB[cc]+IB[e])/bi;out[o+3]=255;}}
+  img.data.set(out);x.putImageData(img,0,0);
+}
+function haloTone(c,amt,con,sat,f){
+  const b=softBlur(c,f),x=ctx2(c),w=c.width,h=c.height,img=x.getImageData(0,0,w,h),d=img.data,bd=ctx2(b).getImageData(0,0,w,h).data;
+  for(let i=0;i<d.length;i+=4){let r=d[i],g=d[i+1],bb=d[i+2];
+    r+=amt*(r-bd[i]);g+=amt*(g-bd[i+1]);bb+=amt*(bb-bd[i+2]);
+    r=(r-128)*con+128;g=(g-128)*con+128;bb=(bb-128)*con+128;
+    const L=.299*r+.587*g+.114*bb;d[i]=L+(r-L)*sat;d[i+1]=L+(g-L)*sat;d[i+2]=L+(bb-L)*sat;}
+  x.putImageData(img,0,0);
+}
+function mushDims(S,p,work){
+  const sw=S.width,sh=S.height,short=Math.min(sw,sh),ar=sw/sh,lowS=Math.min(short,Math.round(p.low));
+  const lw=Math.max(8,Math.round(ar>=1?lowS*ar:lowS)),lh=Math.max(8,Math.round(ar>=1?lowS:lowS/ar));
+  const L=Math.min(work,Math.max(sw,sh));
+  return {lw,lh,ow:Math.round(ar>=1?L:L*ar),oh:Math.round(ar>=1?L/ar:L),full:lowS>=short};
+}
+async function renderMush(S,p,work,stamp,yr,ex){
+  const dm=mushDims(S,p,work);let c;
+  if(dm.full)c=downscale(S,dm.ow,dm.oh);
+  else{const low=downscale(S,dm.lw,dm.lh);if(p.q<.99){await jpeg(low,p.q);await jpeg(low,p.q*.9);}
+    c=smoothResize(low,dm.ow,dm.oh);if(p.kuw>.3)kuwahara(c,p.kuw*dm.ow/1200);}
+  if(p.sharp>.02||p.con!==1||p.sat!==1)haloTone(c,p.sharp,p.con,p.sat,Math.max(3,Math.round(dm.ow/220)));
+  overexpose(c,ex);if(stamp)drawStamp(c,stamp,yr);
+  if(!dm.full||ex>0)await jpeg(c,Math.max(.6,p.q+.3));
+  return c;
+}
+
+/* ---------- pixel pipeline ---------- */
+function pixDims(S,p,cap){
+  const sw=S.width,sh=S.height,sMP=sw*sh/1e6,tMP=Math.min(p.mp,sMP,cap||Infinity),k=Math.min(1,Math.sqrt(tMP/sMP));
+  return {w:Math.max(16,Math.round(sw*k)),h:Math.max(12,Math.round(sh*k)),capped:p.mp>sMP};
+}
+function crossMix(d,w,h,s){const o=new Uint8ClampedArray(d),W=w*4;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let c=0;c<3;c++){const j=i+c,v=d[j];o[j]=v+((v*2+d[j-4]+d[j+4]+d[j-W]+d[j+W])/6-v)*s;}}return o;}
+function sharpen(d,w,h,s){const o=new Uint8ClampedArray(d),W=w*4;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let c=0;c<3;c++){const j=i+c,v=d[j];o[j]=v+s*(4*v-d[j-4]-d[j+4]-d[j-W]-d[j+W]);}}return o;}
+function pixelOps(c,p){
+  const x=ctx2(c),w=c.width,h=c.height,img=x.getImageData(0,0,w,h);let d=img.data;
+  if(p.smooth>.01)d=crossMix(d,w,h,Math.min(1,p.smooth*2));
+  const rnd=mulberry(20031021),g=()=>(rnd()+rnd()+rnd()-1.5)*2;
+  const [tr,tg,tb]=p.tint,con=p.con,sat=p.sat,hdr=p.hdr,vig=p.vig,ns=p.noise/255,cs=p.chroma,cx=w/2,cy=h/2,inv=1/(cx*cx+cy*cy);
+  for(let y=0;y<h;y++){const dy=(y-cy)*(y-cy);for(let xx=0;xx<w;xx++){
+    const i=(y*w+xx)*4;let r=d[i]/255*tr,gg=d[i+1]/255*tg,b=d[i+2]/255*tb;
+    if(hdr){r+=hdr*.9*r*(1-r)*(1-r);gg+=hdr*.9*gg*(1-gg)*(1-gg);b+=hdr*.9*b*(1-b)*(1-b);}
+    r=(r-.5)*con+.5;gg=(gg-.5)*con+.5;b=(b-.5)*con+.5;
+    let L=.299*r+.587*gg+.114*b;r=L+(r-L)*sat;gg=L+(gg-L)*sat;b=L+(b-L)*sat;
+    if(vig){const f=1-vig*((xx-cx)*(xx-cx)+dy)*inv;r*=f;gg*=f;b*=f;}
+    if(ns>0){L=.299*r+.587*gg+.114*b;const amp=ns*(1.25-Math.min(1,Math.max(0,L))*.75),n=g()*amp;
+      if(cs>0){r+=n+g()*amp*cs;gg+=n+g()*amp*cs*.6;b+=n+g()*amp*cs;}else{r+=n;gg+=n;b+=n;}}
+    d[i]=r*255;d[i+1]=gg*255;d[i+2]=b*255;}}
+  if(p.sharp>.01)d=sharpen(d,w,h,p.sharp*.6);
+  if(d!==img.data)img.data.set(d);x.putImageData(img,0,0);
+}
+function quantize(c,bits){
+  const x=ctx2(c),w=c.width,h=c.height,img=x.getImageData(0,0,w,h),d=img.data,L=bits.map(b=>(1<<b)-1),amt=bits[0]<=4?1:.6;
+  for(let y=0;y<h;y++)for(let xx=0;xx<w;xx++){const i=(y*w+xx)*4,o=((BAYER[y&3][xx&3]+.5)/16-.5)*amt;
+    for(let ch=0;ch<3;ch++){const l=L[ch];let v=Math.round(d[i+ch]/255*l+o);v=v<0?0:v>l?l:v;d[i+ch]=v*255/l;}}
+  x.putImageData(img,0,0);
+}
+async function renderPixel(S,p,cap,stamp,yr,ex){
+  const {w,h}=pixDims(S,p,cap),c=downscale(S,w,h),x=ctx2(c);
+  if(p.blur>.05&&FILTER_OK){const t=mk(w,h);t.getContext('2d').drawImage(c,0,0);x.filter=`blur(${p.blur.toFixed(2)}px)`;x.drawImage(t,0,0);x.filter='none';}
+  pixelOps(c,p);overexpose(c,ex);if(p.bits)quantize(c,p.bits);if(stamp)drawStamp(c,stamp,yr);
+  for(let i=0;i<p.pass;i++)await jpeg(c,p.q*(i?0.9:1));
+  return c;
+}
+/* full render of one image with a settings snapshot */
+async function renderWith(S,st,quality,faceList,useCache){
+  const P=await prepare(S,faceList,st.text,useCache);
+  const stamp=st.stamp.on?st.stamp:null,ex=st.expo/100;
+  const work=quality==='full'?MUSH_EXPORT:quality==='video'?(MOBILE?700:900):MUSH_PREVIEW;
+  const c=st.mode==='mush'?await renderMush(P,mushOf(st),work,stamp,st.year,ex):await renderPixel(P,pixelOf(st),quality==='full'?Infinity:quality==='video'?.9:PREVIEW_MP,stamp,st.year,ex);
+  if(st.text.on&&!st.text.smear&&st.text.text.trim()){await ensureFont(st.text);drawText(c,st.text);}
+  return c;
+}
+
+/* ---------- labels ---------- */
+const mpLabel=(w,h)=>{const px=w*h;return px<1e4?px+' 화소':Math.round(px/1e4).toLocaleString()+'만 화소';};
+const colorLabel=b=>{if(!b)return '1,677만 색';const s=b[0]+b[1]+b[2];return s<=8?'256색':s<=12?'4,096색':'6.5만 색';};
+function spec(st){
+  if(st.mode==='mush'){
+    const p=mushOf(st),m=mushDims(src,p,MUSH_EXPORT);
+    if(m.full)return {hud:`${m.ow}×${m.oh}`,html:'<b>원본 화질</b>'+(st.expo?` · 과노출 ${st.expo}`:'')};
+    const lvl=p.kuw>=5?'강함':p.kuw>=2.5?'보통':'약함';
+    return {hud:`${m.lw}×${m.lh} → ${m.ow}×${m.oh}`,html:`<b>${m.lw}×${m.lh}</b>까지 줄였다가 키운 화질 · 번짐 ${lvl} · JPEG ${Math.round(p.q*100)}%`+(st.expo?` · 과노출 ${st.expo}`:'')};
+  }
+  const p=pixelOf(st),{w,h,capped}=pixDims(src,p),ex=[];if(p.hdr>.1)ex.push('HDR');if(p.smooth>.1)ex.push('자동 보정');if(st.expo)ex.push('과노출 '+st.expo);
+  return {hud:`${w}×${h}`,html:`<b>${mpLabel(w,h)}</b> · ${w.toLocaleString()}×${h.toLocaleString()} · ${colorLabel(p.bits)}`+(p.pass?` · JPEG ${Math.round(p.q*100)}%`:' · 압축 없음')+(ex.length?' · '+ex.join(' · '):'')+(capped&&st.year<2026?' · 올린 사진이 더 작아 원본 해상도 사용':'')};
+}
+
+/* ---------- view ---------- */
+const viewer=$('viewer'),proc=$('proc'),orig=$('orig'),ovl=$('ovl');
+function drawOrig(){
+  const ar=src.width/src.height;viewer.style.setProperty('--ar',ar.toFixed(4));
+  const L=1600,w=ar>=1?L:Math.round(L*ar),h=ar>=1?Math.round(L/ar):L;
+  orig.width=w;orig.height=h;orig.getContext('2d').drawImage(downscale(src,w,h),0,0);
+}
+function fitRendering(){proc.style.imageRendering=mode==='pixel'&&proc.width<viewer.clientWidth*(window.devicePixelRatio||1)?'pixelated':'auto';drawOverlay();}
+let running=false,again=false;
+let deferred=false;
+function schedule(){if(working){deferred=true;return;}if(running){again=true;return;}running=true;$('busy').hidden=false;
+  requestAnimationFrame(async()=>{active++;try{await update();showErr('');}catch(e){showErr('이 사진을 처리하지 못했어요. 사진을 다시 올리거나 다른 사진으로 해 보세요.');}finally{active--;running=false;sweep();if(again){again=false;schedule();}else $('busy').hidden=true;}});}
+async function update(){
+  if(!src)return;
+  const st=settings(),c=await renderWith(src,st,'preview',faces,true);
+  lastOut=c;proc.width=c.width;proc.height=c.height;proc.getContext('2d').drawImage(c,0,0);
+  const s=spec(st);$('hud').textContent=s.hud;$('spec').innerHTML=s.html;
+  updateExports();checkPrint(st);fitRendering();drawMockups();
+}
+
+/* print check */
+let warnMask=null;
+function checkPrint(st){
+  const w=Math.max(8,Math.round(proc.width/3)),h=Math.max(8,Math.round(proc.height/3)),sm=downscale(proc,w,h),d=ctx2(sm).getImageData(0,0,w,h).data;
+  const m=mk(w,h),mx=m.getContext('2d'),mi=mx.createImageData(w,h),md=mi.data;let white=0,black=0;
+  for(let i=0;i<d.length;i+=4){const L=.299*d[i]+.587*d[i+1]+.114*d[i+2],mxv=Math.max(d[i],d[i+1],d[i+2]);
+    if(L>=232){white++;md[i]=255;md[i+1]=60;md[i+2]=170;md[i+3]=170;}else if(mxv<=16){black++;md[i]=40;md[i+1]=200;md[i+2]=255;md[i+3]=170;}}
+  mx.putImageData(mi,0,0);warnMask=m;
+  const n=w*h,wp=Math.round(white/n*100),bp=Math.round(black/n*100),items=[];
+  if(wp>=20)items.push([true,`하얗게 날아간 부분이 ${wp}%예요. 흰 티셔츠·투명 케이스에 인쇄하면 그 부분이 안 보여요.`]);
+  else if(wp>=8)items.push([false,`하얗게 날아간 부분이 ${wp}%예요. 흰 티셔츠보다 크림·그레이에서 더 잘 보여요.`]);
+  if(bp>=20)items.push([true,`새까만 부분이 ${bp}%예요. 검정 티셔츠에서는 그 부분이 묻혀요.`]);
+  if(st.text.on&&st.text.text.trim()&&st.text.size<5)items.push([true,'문구가 작아서 뭉개지면 안 읽힐 수 있어요. 글자 크기를 5 이상으로 올려 보세요.']);
+  const crushed=st.mode==='mush'?mushOf(st).low<230:pixelOf(st).mp<.6;
+  if(st.text.on&&st.text.text.trim()&&st.text.smear&&crushed)items.push([true,'이 연도에서는 문구까지 뭉개져서 안 읽힐 수 있어요. ‘문구도 같이 뭉개기’를 끄면 글자만 또렷해져요.']);
+  if(src.width<800&&src.height<800)items.push([true,'올린 사진이 작아요. 큰 사진일수록 인쇄 결과가 깔끔해요.']);
+  if(!items.some(i=>i[0]))items.unshift([false,'인쇄해도 괜찮은 밝기예요.']);
+  const ul=$('warnList');ul.textContent='';items.forEach(([bad,t])=>{const li=document.createElement('li');if(bad)li.className='bad';li.textContent=t;ul.append(li);});
+}
+function drawOverlay(){
+  const dpr=window.devicePixelRatio||1,W=Math.round(viewer.clientWidth*dpr),H=Math.round(viewer.clientHeight*dpr);
+  if(ovl.width!==W||ovl.height!==H){ovl.width=W;ovl.height=H;}
+  const x=ovl.getContext('2d');x.clearRect(0,0,W,H);
+  if($('warnShow').checked&&warnMask){const sx=parseFloat(getComputedStyle(viewer).getPropertyValue('--split'))/100*W||0;
+    x.save();x.beginPath();x.rect(sx,0,W-sx,H);x.clip();x.imageSmoothingEnabled=false;x.drawImage(warnMask,0,0,W,H);x.restore();}
+  if(manualMode&&src){x.save();x.setLineDash([8*dpr,6*dpr]);x.lineWidth=2.5*dpr;
+    faces.forEach(f=>{x.strokeStyle=f.auto?'#F28A2E':'#F3EFE4';x.beginPath();x.ellipse(f.x*W,f.y*H,f.r*1.2*W,f.r*1.2*W*1.25*(W/H)*(H/W),0,0,Math.PI*2);x.stroke();});x.restore();}
+  $('warnLegend').hidden=!$('warnShow').checked;
+}
+
+/* mockups */
+function fitRect(sw,sh,bw,bh,cover){const k=cover?Math.max(bw/sw,bh/sh):Math.min(bw/sw,bh/sh);return {w:sw*k,h:sh*k};}
+function shirtPath(x,cx,cy,s){const P=[[-120,-330],[-330,-250],[-420,-60],[-300,0],[-260,-80],[-260,360],[260,360],[260,-80],[300,0],[420,-60],[330,-250],[120,-330]];
+  x.beginPath();x.moveTo(cx+P[0][0]*s,cy+P[0][1]*s);for(let i=1;i<P.length;i++)x.lineTo(cx+P[i][0]*s,cy+P[i][1]*s);x.quadraticCurveTo(cx,cy-235*s,cx+P[0][0]*s,cy+P[0][1]*s);x.closePath();}
+function mockShirt(c,img,color){
+  const x=c.getContext('2d'),S=c.width,cx=S/2,cy=S*.55,s=S/1080*1.18;
+  x.fillStyle='#D8D3C9';x.fillRect(0,0,S,S);
+  x.save();x.shadowColor='rgba(0,0,0,.28)';x.shadowBlur=40*s;x.shadowOffsetY=18*s;shirtPath(x,cx,cy,s);x.fillStyle=color;x.fill();x.restore();
+  x.save();shirtPath(x,cx,cy,s);x.clip();
+  if(img){const bw=330*s,bh=400*s,f=fitRect(img.width,img.height,bw,bh,false),dx=cx-f.w/2,dy=cy-195*s;
+    const light=parseInt(color.slice(1,3),16)>120;x.globalCompositeOperation=light?'multiply':'source-over';x.globalAlpha=light?1:.96;
+    x.imageSmoothingEnabled=!(mode==='pixel');x.drawImage(img,dx,dy,f.w,f.h);x.globalAlpha=1;x.globalCompositeOperation='source-over';x.imageSmoothingEnabled=true;}
+  const g=x.createLinearGradient(cx-420*s,0,cx+420*s,0);g.addColorStop(0,'rgba(0,0,0,.18)');g.addColorStop(.25,'rgba(0,0,0,0)');g.addColorStop(.75,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.18)');x.fillStyle=g;x.fillRect(0,0,S,S);
+  x.strokeStyle='rgba(0,0,0,.08)';x.lineWidth=6*s;[[-120,-120,-150,300],[140,-60,170,320]].forEach(([a,b,c2,d])=>{x.beginPath();x.moveTo(cx+a*s,cy+b*s);x.quadraticCurveTo(cx+(a+c2)/2*s+20*s,cy+(b+d)/2*s,cx+c2*s,cy+d*s);x.stroke();});
+  x.restore();
+}
+function rrect(x,X,Y,W,H,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.closePath();}
+function mockCase(c,img){
+  const x=c.getContext('2d'),S=c.width,k=S/1080,w=430*k,h=870*k,X=-w/2,Y=-h/2,r=70*k;
+  x.fillStyle='#CFD3D6';x.fillRect(0,0,S,S);
+  x.save();x.translate(S/2,S/2);x.rotate(-.08);
+  x.save();x.shadowColor='rgba(0,0,0,.35)';x.shadowBlur=50*k;x.shadowOffsetY=24*k;rrect(x,X,Y,w,h,r);x.fillStyle='#222';x.fill();x.restore();
+  x.save();rrect(x,X,Y,w,h,r);x.clip();
+  if(img){const f=fitRect(img.width,img.height,w,h,true);x.imageSmoothingEnabled=!(mode==='pixel');x.drawImage(img,-f.w/2,-f.h/2,f.w,f.h);x.imageSmoothingEnabled=true;}
+  const gl=x.createLinearGradient(X,Y,X+w,Y+h);gl.addColorStop(0,'rgba(255,255,255,.22)');gl.addColorStop(.4,'rgba(255,255,255,0)');gl.addColorStop(1,'rgba(0,0,0,.12)');x.fillStyle=gl;x.fillRect(X,Y,w,h);
+  x.restore();
+  x.lineWidth=12*k;x.strokeStyle='rgba(20,22,28,.85)';rrect(x,X+6*k,Y+6*k,w-12*k,h-12*k,r-6*k);x.stroke();
+  rrect(x,X+28*k,Y+28*k,150*k,150*k,36*k);x.fillStyle='rgba(20,22,28,.92)';x.fill();
+  [[X+68*k,Y+68*k],[X+138*k,Y+68*k],[X+68*k,Y+138*k]].forEach(([a,b],i)=>{if(i===2){x.fillStyle='#3A3D45';x.beginPath();x.arc(a,b,12*k,0,Math.PI*2);x.fill();return;}x.fillStyle='#0B0C10';x.beginPath();x.arc(a,b,27*k,0,Math.PI*2);x.fill();x.strokeStyle='#4A4E58';x.lineWidth=4*k;x.stroke();});
+  x.restore();
+}
+function mockSticker(c,img){
+  const x=c.getContext('2d'),S=c.width,k=S/1080;
+  x.fillStyle='#E4DCCB';x.fillRect(0,0,S,S);
+  x.strokeStyle='rgba(0,0,0,.05)';x.lineWidth=2;for(let i=-S;i<S*2;i+=28*k){x.beginPath();x.moveTo(i,0);x.lineTo(i-S*.4,S);x.stroke();}
+  if(!img)return;
+  const f=fitRect(img.width,img.height,620*k,620*k,false),m=26*k,W=f.w+m*2,H=f.h+m*2;
+  x.save();x.translate(S/2,S/2);x.rotate(.06);
+  x.save();x.shadowColor='rgba(0,0,0,.3)';x.shadowBlur=30*k;x.shadowOffsetY=12*k;rrect(x,-W/2,-H/2,W,H,44*k);x.fillStyle='#FBFAF7';x.fill();x.restore();
+  x.save();rrect(x,-f.w/2,-f.h/2,f.w,f.h,22*k);x.clip();x.imageSmoothingEnabled=!(mode==='pixel');x.drawImage(img,-f.w/2,-f.h/2,f.w,f.h);x.restore();
+  const g=x.createLinearGradient(-W/2,-H/2,W/2,H/2);g.addColorStop(0,'rgba(255,255,255,.25)');g.addColorStop(.35,'rgba(255,255,255,0)');rrect(x,-W/2,-H/2,W,H,44*k);x.fillStyle=g;x.fill();
+  x.restore();
+}
+function drawMockups(){if(!lastOut)return;mockShirt($('mkShirt'),lastOut,$('shirtColor').value);mockCase($('mkCase'),lastOut);mockSticker($('mkSticker'),lastOut);}
+
+/* ---------- controls ---------- */
+function syncAll(){
+  const e=eraOf(year);
+  $('year').textContent=year;$('era').textContent=e.era;$('ys').value=year;$('tagR').textContent=year===2026?'지금':String(year);
+  document.querySelectorAll('#chips .chip').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.y===year)));
+  document.querySelectorAll('.seg button[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
+  document.querySelectorAll('.seg button[data-pos]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pos===txPos)));
+  $('advMush').hidden=mode!=='mush';$('advPixel').hidden=mode!=='pixel';
+  $('exp').value=expo;$('expOut').textContent=expo;$('txSizeOut').textContent=$('txSize').value;$('faceSizeOut').textContent=$('faceSize').value;
+  syncOv();store.set('tm-year',String(year));store.set('tm-mode',mode);store.set('tm-exp',String(expo));
+}
+function syncOv(){
+  const st=settings();
+  if(mode==='mush'){const p=mushOf(st);
+    $('mLow').value=Math.min(1400,Math.round(p.low));$('mLowOut').textContent=p.low>=1400?'원본':Math.round(p.low)+'px';
+    $('mKuw').value=p.kuw;$('mKuwOut').textContent=p.kuw.toFixed(1);$('mSharp').value=p.sharp;$('mSharpOut').textContent=p.sharp.toFixed(1);
+    $('mQ').value=Math.round(p.q*100);$('mQOut').textContent=Math.round(p.q*100)+'%';return;}
+  const p=pixelOf(st);
+  $('oMp').value=Math.round(Math.log(Math.min(p.mp,60)/.05)/Math.log(60/.05)*1000);$('oMpOut').textContent=p.mp>=60?'원본':(p.mp<1?Math.round(p.mp*100)+'만':p.mp.toFixed(1)+'MP');
+  $('oBits').value=p.bits?p.bits.join(''):'888';$('oQ').value=p.pass?Math.round(p.q*100):100;$('oQOut').textContent=p.pass?Math.round(p.q*100)+'%':'없음';
+  $('oNoise').value=p.noise;$('oNoiseOut').textContent=p.noise.toFixed(1);$('oSharp').value=p.sharp;$('oSharpOut').textContent=p.sharp.toFixed(2);
+}
+function setYear(y){year=Math.max(2000,Math.min(2026,Math.round(y)));ov={};syncAll();schedule();}
+KF.forEach(k=>{const b=document.createElement('button');b.type='button';b.className='chip';b.dataset.y=k.y;
+  const s1=document.createElement('span');s1.className='cy';s1.textContent=k.y;const s2=document.createElement('span');s2.textContent=k.era;b.append(s1,s2);
+  b.addEventListener('click',()=>setYear(k.y));$('chips').append(b);});
+$('ys').addEventListener('input',e=>setYear(+e.target.value));
+document.querySelectorAll('.seg button[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;ov={};syncAll();schedule();}));
+$('exp').addEventListener('input',e=>{expo=+e.target.value;$('expOut').textContent=expo;store.set('tm-exp',String(expo));schedule();});
+const ovIn=(id,key,fn)=>$(id).addEventListener(id==='oBits'?'change':'input',e=>{ov[key]=fn(e.target.value);syncOv();schedule();});
+ovIn('mLow','mlow',v=>+v>=1400?Infinity:+v);ovIn('mKuw','mkuw',Number);ovIn('mSharp','msharp',Number);ovIn('mQ','mq',v=>+v/100);
+ovIn('oMp','mp',v=>+v>=1000?Infinity:.05*Math.pow(60/.05,+v/1000));ovIn('oBits','bits',v=>v==='888'?null:v.split('').map(Number));
+ovIn('oQ','q',v=>+v/100);ovIn('oNoise','noise',Number);ovIn('oSharp','sharp',Number);
+$('resetOv').addEventListener('click',()=>{ov={};syncOv();schedule();});
+['stampOn','stampColor','txOn','txFont','txColor','txOutline','txSmear'].forEach(id=>$(id).addEventListener('change',schedule));
+let txTimer=0;['mm','dd'].forEach(id=>$(id).addEventListener('input',schedule));
+$('txText').addEventListener('input',()=>{clearTimeout(txTimer);txTimer=setTimeout(()=>{if($('txOn').checked)schedule();},250);});
+$('txSize').addEventListener('input',()=>{$('txSizeOut').textContent=$('txSize').value;if($('txOn').checked)schedule();});
+document.querySelectorAll('.seg button[data-pos]').forEach(b=>b.addEventListener('click',()=>{txPos=b.dataset.pos;syncAll();if($('txOn').checked)schedule();}));
+$('shirtColor').addEventListener('change',drawMockups);
+$('warnShow').addEventListener('change',drawOverlay);
+
+/* alien text: every other syllable split into jamo */
+const CL='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ',CV='ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ',CT=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function alien(s){let k=0;return [...s].map(ch=>{const c=ch.charCodeAt(0);if(c<0xAC00||c>0xD7A3)return ch;k++;if(k%2===0)return ch;const i=c-0xAC00;return CL[Math.floor(i/588)]+CV[Math.floor((i%588)/28)]+CT[i%28];}).join('');}
+$('txAlien').addEventListener('click',()=>{$('txText').value=alien($('txText').value);$('txOn').checked=true;schedule();});
+
+/* presets */
+function userPresets(){try{return JSON.parse(store.get('tm-presets')||'[]')}catch(e){return []}}
+function fixInf(o){const r={};for(const k in o)r[k]=o[k]===null&&(k==='mp'||k==='mlow')?Infinity:o[k];return r;}
+function applyPreset(st){
+  mode=st.mode||mode;year=st.year||year;expo=st.expo||0;ov=fixInf(st.ov||{});
+  if(st.text){const t=st.text;$('txOn').checked=!!t.on;$('txText').value=t.text||'';$('txFont').value=t.font||'dohyeon';$('txSize').value=t.size||9;txPos=t.pos||'bot';$('txColor').value=t.color||'white';$('txOutline').checked=t.outline!==false;$('txSmear').checked=t.smear!==false;}
+  if(st.stamp){$('stampOn').checked=!!st.stamp.on;$('stampColor').value=st.stamp.color||'#FF9A2E';}
+  if('faceAuto' in st&&st.faceAuto!==$('faceAuto').checked){$('faceAuto').checked=st.faceAuto;onFaceAuto();}
+  syncAll();schedule();
+}
+function renderPresets(){
+  const box=$('presetChips');box.textContent='';
+  BUILTIN.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>applyPreset(p.st));box.append(b);});
+  userPresets().forEach((p,i)=>{const w=document.createElement('span');w.className='chip user';
+    const b=document.createElement('button');b.type='button';b.style.cssText='border:0;background:transparent;padding:0;color:inherit;font:inherit';b.textContent=p.name;b.addEventListener('click',()=>applyPreset(p.st));
+    const x=document.createElement('button');x.type='button';x.className='x';x.textContent='×';x.setAttribute('aria-label',p.name+' 삭제');
+    x.addEventListener('click',()=>{const a=userPresets();a.splice(i,1);store.set('tm-presets',JSON.stringify(a));renderPresets();});
+    w.append(b,x);box.append(w);});
+}
+$('presetSave').addEventListener('click',()=>{const name=$('presetName').value.trim()||`내 설정 ${userPresets().length+1}`;const a=userPresets();a.push({name,st:settings()});store.set('tm-presets',JSON.stringify(a.slice(-12)));$('presetName').value='';renderPresets();});
+$('presetName').addEventListener('keydown',e=>{if(e.key==='Enter')$('presetSave').click();});
+
+/* faces */
+let faceApiPromise=null;
+function loadFaceApi(){
+  if(faceApiPromise)return faceApiPromise;
+  faceApiPromise=new Promise((res,rej)=>{if(window.faceapi)return res();const s=document.createElement('script');s.src=FACEAPI_URL;s.onload=res;s.onerror=()=>rej(new Error('script'));document.head.append(s);})
+    .then(()=>fetch(MODEL_URL+'/ssd_weights.json')).then(r=>{if(!r.ok)throw new Error('model');return r.json();})
+    .then(j=>{const bin=atob(j.b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+      const fa=window.faceapi;return fa.nets.ssdMobilenetv1.loadFromWeightMap(fa.tf.io.decodeWeights(u.buffer,j.specs));})
+    .catch(e=>{faceApiPromise=null;throw e;});
+  return faceApiPromise;
+}
+async function detectFaces(S){
+  await loadFaceApi();
+  const L=Math.max(S.width,S.height),k=Math.min(1,1024/L),c=downscale(S,Math.round(S.width*k),Math.round(S.height*k));
+  const res=await window.faceapi.detectAllFaces(c,new window.faceapi.SsdMobilenetv1Options({minConfidence:.2,maxResults:60}));
+  return res.map(d=>{const b=d.box;return {x:(b.x+b.width/2)/c.width,y:(b.y+b.height/2)/c.height,r:Math.max(b.width,b.height)/2/c.width,auto:true};});
+}
+function rebuildFaces(){faces=autoFaces.concat(faces.filter(f=>!f.auto));}
+async function onFaceAuto(){
+  if(!$('faceAuto').checked){autoFaces=[];rebuildFaces();$('faceStatus').textContent='자동 가리기를 껐어요.';drawOverlay();schedule();return;}
+  if(!src)return;
+  const id=srcId;$('faceStatus').textContent='얼굴을 찾는 중이에요…';
+  try{const found=await detectFaces(src);if(id!==srcId||!$('faceAuto').checked)return;autoFaces=found;rebuildFaces();
+    $('faceStatus').textContent=found.length?`얼굴 ${found.length}개를 찾아 가렸어요. 놓친 얼굴은 직접 가리기로 가려 주세요.`:'찾은 얼굴이 없어요. 흐릿하거나 작은 얼굴은 직접 가리기로 가려 주세요.';
+    drawOverlay();schedule();}
+  catch(e){$('faceStatus').textContent='얼굴 찾기 모델을 불러오지 못했어요. 직접 가리기 모드를 써 주세요.';}
+}
+$('faceAuto').addEventListener('change',onFaceAuto);
+$('faceManual').addEventListener('click',()=>{manualMode=!manualMode;$('faceManual').setAttribute('aria-pressed',String(manualMode));$('faceManual').textContent=manualMode?'직접 가리기 모드 끄기':'직접 가리기 모드 켜기';
+  $('faceManual').classList.toggle('primary',manualMode);viewer.classList.toggle('marking',manualMode);if(manualMode)setSplit(0);drawOverlay();});
+$('faceSize').addEventListener('input',()=>{$('faceSizeOut').textContent=$('faceSize').value;});
+$('faceClear').addEventListener('click',()=>{faces=[];autoFaces=[];$('faceAuto').checked=false;$('faceStatus').textContent='가린 곳을 모두 지웠어요.';drawOverlay();schedule();});
+viewer.addEventListener('click',e=>{
+  if(!manualMode||!src||e.target.closest('.knob'))return;
+  const r=viewer.getBoundingClientRect(),nx=(e.clientX-r.left)/r.width,ny=(e.clientY-r.top)/r.height,W=src.width,H=src.height;
+  const hit=faces.findIndex(f=>Math.hypot((nx-f.x)*W,(ny-f.y)*H)<f.r*W*1.2);
+  if(hit>=0){const f=faces[hit];faces.splice(hit,1);if(f.auto)autoFaces=autoFaces.filter(a=>a!==f);}
+  else faces.push({x:nx,y:ny,r:+$('faceSize').value/100,auto:false});
+  drawOverlay();schedule();
+});
+
+/* compare divider */
+function setSplit(v){v=Math.max(0,Math.min(100,v));viewer.style.setProperty('--split',v+'%');$('split').value=Math.round(v);$('splitOut').textContent=Math.round(v)+'%';$('tagL').hidden=v<12;$('divider').hidden=v<=0;drawOverlay();}
+$('split').addEventListener('input',e=>setSplit(+e.target.value));
+const knob=$('knob');
+knob.addEventListener('pointerdown',e=>{knob.setPointerCapture(e.pointerId);e.preventDefault();});
+knob.addEventListener('pointermove',e=>{if(!knob.hasPointerCapture(e.pointerId))return;const r=viewer.getBoundingClientRect();setSplit((e.clientX-r.left)/r.width*100);});
+addEventListener('resize',fitRendering);
+
+/* loading */
+function showErr(m){$('err').textContent=m;$('err').hidden=!m;}
+function viaImg(f){return new Promise((res,rej)=>{const u=URL.createObjectURL(f),i=new Image();i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('img'));};i.src=u;});}
+async function decode(f){
+  let img;
+  try{img=await createImageBitmap(f);}catch(e){img=await viaImg(f);}
+  const W=img.naturalWidth||img.width,H=img.naturalHeight||img.height;if(!W||!H)throw new Error('empty');
+  const k=Math.min(1,SRC_MAX/Math.max(W,H)),w=Math.round(W*k),h=Math.round(H*k);
+  const c=mk(w,h),x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);if(img.close)img.close();
+  return c;
+}
+function setSource(S,note){src=S;srcId++;faces=[];autoFaces=[];prepCache={key:'',c:null};$('srcNote').textContent=note;$('fallback').hidden=true;$('status').textContent='';drawOrig();schedule();if($('faceAuto').checked)onFaceAuto();}
+async function loadFile(f){
+  if(!f)return;showErr('');
+  if(f.type&&!f.type.startsWith('image/')){showErr('이미지 파일만 올릴 수 있어요.');return;}
+  let S;try{S=await decode(f);}catch(e){showErr('이 파일은 열 수 없어요. JPG나 PNG로 올려 주세요. 아이폰은 설정 › 카메라 › 포맷에서 ‘높은 호환성’을 고르면 JPG로 찍혀요.');return;}
+  setSource(S,`${f.name||'붙여 넣은 사진'} · ${S.width.toLocaleString()}×${S.height.toLocaleString()}`);
+}
+$('file').addEventListener('change',e=>{loadFile(e.target.files[0]);e.target.value='';});
+document.addEventListener('paste',e=>{if(e.target.closest&&e.target.closest('textarea,input'))return;const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));if(it){e.preventDefault();loadFile(it.getAsFile());}});
+let dragN=0;
+document.addEventListener('dragenter',e=>{if([...(e.dataTransfer?.types||[])].includes('Files')){dragN++;$('drop').hidden=false;}});
+document.addEventListener('dragleave',()=>{dragN=Math.max(0,dragN-1);if(!dragN)$('drop').hidden=true;});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();dragN=0;$('drop').hidden=true;loadFile(e.dataTransfer.files[0]);});
+
+/* sample photo: an original drawing of a park with a ball */
+function sample(){
+  const W=1200,H=1500,c=mk(W,H),x=c.getContext('2d'),rnd=mulberry(11);
+  const sky=x.createLinearGradient(0,0,0,500);sky.addColorStop(0,'#9CC4E8');sky.addColorStop(1,'#E4EEF2');x.fillStyle=sky;x.fillRect(0,0,W,520);
+  x.fillStyle='#8E8A80';x.fillRect(760,250,440,230);x.fillStyle='#6E6A62';x.beginPath();x.moveTo(740,260);x.lineTo(980,170);x.lineTo(1220,260);x.closePath();x.fill();
+  for(let i=0;i<9;i++){x.fillStyle='#4B4A48';x.fillRect(790+i*46,320,26,40);}
+  for(let i=0;i<900;i++){const tx=rnd()*W,ty=330+rnd()*170,r=14+rnd()*34,g=60+rnd()*70;x.fillStyle=`rgb(${30+rnd()*30},${g+20},${30+rnd()*25})`;x.beginPath();x.arc(tx,ty,r,0,Math.PI*2);x.fill();}
+  for(let i=0;i<6;i++){x.fillStyle='#3A2E24';x.fillRect(80+i*190,430,14,90);}
+  const grass=x.createLinearGradient(0,500,0,H);grass.addColorStop(0,'#5E8C3A');grass.addColorStop(1,'#7FAE4E');x.fillStyle=grass;x.fillRect(0,500,W,H-500);
+  for(let k=0;k<6;k++){x.fillStyle=k%2?'rgba(255,255,255,.05)':'rgba(0,0,0,.05)';x.fillRect(0,500+k*170,W,170);}
+  x.lineWidth=2;for(let i=0;i<9000;i++){const gx=rnd()*W,gy=500+rnd()*(H-500),l=4+rnd()*10*(gy/H);x.strokeStyle=`rgba(${40+rnd()*60},${90+rnd()*80},${30+rnd()*40},.8)`;x.beginPath();x.moveTo(gx,gy);x.lineTo(gx+(rnd()-.5)*4,gy-l);x.stroke();}
+  x.fillStyle='#F4F4EE';x.fillRect(120,120,34,560);x.fillRect(120,120,520,26);x.fillRect(606,120,34,420);
+  x.strokeStyle='rgba(240,240,235,.55)';x.lineWidth=2;for(let i=0;i<12;i++){x.beginPath();x.moveTo(150+i*40,146);x.lineTo(170+i*40,520);x.stroke();}for(let j=0;j<10;j++){x.beginPath();x.moveTo(150,170+j*36);x.lineTo(610,170+j*36);x.stroke();}
+  x.fillStyle='rgba(20,30,10,.35)';x.beginPath();x.ellipse(640,1330,190,40,0,0,Math.PI*2);x.fill();
+  const bx=600,by=1200,br=150,bg=x.createRadialGradient(bx-50,by-60,20,bx,by,br);bg.addColorStop(0,'#FFFFFF');bg.addColorStop(.8,'#E4E6E2');bg.addColorStop(1,'#B9BDB6');
+  x.fillStyle=bg;x.beginPath();x.arc(bx,by,br,0,Math.PI*2);x.fill();
+  x.fillStyle='#2D3A4A';[[0,0,34],[-90,-70,26],[90,-60,26],[-80,80,26],[85,85,26]].forEach(([ox,oy,s])=>{x.beginPath();for(let k=0;k<5;k++){const a=k/5*Math.PI*2-Math.PI/2;x.lineTo(bx+ox+Math.cos(a)*s,by+oy+Math.sin(a)*s);}x.closePath();x.fill();});
+  x.fillStyle='#2F7DD1';x.fillRect(960,560,110,150);x.fillStyle='#24609F';x.fillRect(950,550,130,18);
+  const img=x.getImageData(0,0,W,H),d=img.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-.5)*14;d[i]+=n;d[i+1]+=n;d[i+2]+=n;}x.putImageData(img,0,0);
+  return c;
+}
+$('sampleBtn').addEventListener('click',()=>setSource(sample(),'예시 사진이에요. 내 사진을 올리거나, 끌어다 놓거나, 붙여 넣으세요.'));
+
+/* ---------- saving ---------- */
+/* plain browser download: works on any phone or computer browser, no login */
+async function save(blob,name,kind,list){
+  try{
+    const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.rel='noopener';document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),120000);
+    $('status').textContent=`저장했어요 · ${name}`+(MOBILE?' · 갤러리의 ‘다운로드’ 앨범에서 볼 수 있어요':'');return true;
+  }catch(e){await showFallback(blob,kind,list);return false;}
+}
+const SAVE_HINT=(MOBILE?'아래 이미지를 길게 눌러 ‘이미지 보기’를 누른 뒤, 새로 열린 화면에서 사진을 다시 길게 눌러 저장하세요.':'아래 이미지 위에서 오른쪽 클릭 → ‘이미지를 다른 이름으로 저장’을 고르세요.');
+const toDataURL=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});
+let urls=[];
+async function showFallback(blob,kind,list){
+  urls.forEach(u=>URL.revokeObjectURL(u));urls=[];const body=$('fallbackBody');body.textContent='';
+  if(list){const g=document.createElement('div');g.className='thumbs';for(const b of list){const i=document.createElement('img');i.src=await toDataURL(b);i.alt='변환한 사진';g.append(i);}body.append(g);$('fallbackNote').textContent='이 화면에서는 ZIP 저장이 막혀 있어 한 장씩 보여드려요. '+SAVE_HINT;}
+  else if(kind==='video'){const u=URL.createObjectURL(blob);urls.push(u);const v=document.createElement('video');v.src=u;v.controls=true;v.playsInline=true;v.loop=true;body.append(v);$('fallbackNote').textContent='이 화면에서는 영상을 바로 저장할 수 없어요. 재생 화면을 화면 녹화로 저장하거나, 저장이 되는 기기에서 다시 만들어 주세요.';}
+  else{const i=document.createElement('img');i.src=await toDataURL(blob);i.alt='저장할 결과 이미지';body.append(i);$('fallbackNote').textContent='이 화면에서는 저장 창을 열 수 없어요. '+SAVE_HINT;}
+  $('fallback').hidden=false;$('status').textContent='결과가 아래에 있어요.';
+  try{$('status').scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}
+}
+function finalSize(s,pr,md){
+  const L=Math.max(s.w,s.h);
+  if(pr.id==='raw')return {w:s.w,h:s.h};
+  if(pr.id==='compare')return {w:2160,h:Math.round(1080*s.h/s.w)};
+  if(md==='pixel'&&pr.long>L){let k=Math.ceil(pr.long/L);while(k>1&&s.w*k*s.h*k>MAX_AREA)k--;return {w:s.w*k,h:s.h*k,k};}
+  let k=pr.long/L;if(s.w*k*s.h*k>MAX_AREA)k=Math.sqrt(MAX_AREA/(s.w*s.h));return {w:Math.round(s.w*k),h:Math.round(s.h*k)};
+}
+async function finalize(c,pr,st,S,faceList){
+  const s={w:c.width,h:c.height},f=finalSize(s,pr,st.mode);
+  if(pr.id==='compare'){
+    const before=await prepare(S,faceList,null,false),out=mk(f.w,f.h),x=out.getContext('2d'),half=1080;
+    x.drawImage(downscale(before,half,f.h),0,0);x.imageSmoothingEnabled=!(st.mode==='pixel'&&c.width<half);x.drawImage(c,half,0,half,f.h);
+    x.fillStyle='#F3EFE4';x.fillRect(half-3,0,6,f.h);
+    const fs=Math.round(Math.min(f.h,1080)*.07);x.font=`${fs}px VT323, "Courier New", monospace`;x.textBaseline='top';
+    const tag=(t,xx,col)=>{const w=x.measureText(t).width;x.fillStyle='rgba(15,16,23,.8)';x.fillRect(xx,fs*.4,w+fs*.6,fs*1.1);x.fillStyle=col;x.fillText(t,xx+fs*.3,fs*.45);};
+    tag('원본',fs*.4,'#F3EFE4');tag(st.year===2026?'지금':String(st.year),half+fs*.4,'#F28A2E');return out;}
+  if(f.k){const out=mk(f.w,f.h),x=out.getContext('2d');x.imageSmoothingEnabled=false;x.drawImage(c,0,0,f.w,f.h);return out;}
+  if(f.w!==s.w)return smoothResize(c,f.w,f.h);
+  return c;
+}
+function baseSize(){const st=settings();if(mode==='mush'){const m=mushDims(src,mushOf(st),MUSH_EXPORT);return {w:m.ow,h:m.oh};}const {w,h}=pixDims(src,pixelOf(st));return {w,h};}
+PRESETS.forEach(pr=>{const b=document.createElement('button');b.type='button';b.className='exp'+(pr.primary?' primary':'');b.dataset.id=pr.id;
+  b.innerHTML='<span class="n"></span><span class="m"></span><span class="d"></span>';b.querySelector('.n').textContent=pr.name;b.querySelector('.d').textContent=pr.d;
+  b.addEventListener('click',()=>doExport(pr));$('exports').append(b);
+  if(pr.id!=='compare'){const o=document.createElement('option');o.value=pr.id;o.textContent=pr.name;if(pr.id==='sns')o.selected=true;$('batchPreset').append(o);}});
+function updateExports(){if(!src)return;const s=baseSize();PRESETS.forEach(pr=>{const f=finalSize(s,pr,mode),m=document.querySelector(`.exp[data-id="${pr.id}"] .m`);
+  m.textContent=`${f.w.toLocaleString()}×${f.h.toLocaleString()}`+(pr.long&&pr.id!=='sns'?` · ${(f.w/300).toFixed(1)}×${(f.h/300).toFixed(1)}in`:'');});}
+let working=false;
+function lock(on){working=on;document.querySelectorAll('.exp,#videoBtn,[data-mock],#quickSave').forEach(b=>b.disabled=on);if(!on){sweep();if(deferred){deferred=false;schedule();}}}
+$('quickSave').addEventListener('click',()=>doExport(PRESETS.find(p=>p.id==='sns')));
+async function doExport(pr){
+  if(!src||working)return;lock(true);$('status').textContent='만드는 중이에요…';$('fallback').hidden=true;
+  try{const st=settings(),c=await renderWith(src,st,'full',faces,true),out=await finalize(c,pr,st,src,faces);
+    await save(await toBlob(out,'image/png'),`30man_${st.year}_${st.mode}_${pr.id}.png`,'image');}
+  catch(e){$('status').textContent='저장용 이미지를 만들지 못했어요. 더 작은 크기로 다시 해 보세요.';}
+  finally{lock(false);}
+}
+document.querySelectorAll('[data-mock]').forEach(b=>b.addEventListener('click',async()=>{
+  if(working||!lastOut)return;lock(true);
+  try{const id=b.dataset.mock,cv=$(id==='shirt'?'mkShirt':id==='case'?'mkCase':'mkSticker');await save(await toBlob(cv,'image/png'),`30man_mockup_${id}_${year}.png`,'image');}
+  catch(e){$('status').textContent='목업을 저장하지 못했어요.';}finally{lock(false);}
+}));
+
+/* video: 2026 → 2000 sweep, 9:16 */
+function pickMime(){if(!window.MediaRecorder)return null;return ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>{try{return MediaRecorder.isTypeSupported(t);}catch(e){return false;}})||null;}
+$('videoBtn').addEventListener('click',async()=>{
+  if(!src||working)return;const mime=pickMime();
+  if(!mime){$('status').textContent='이 브라우저는 영상 만들기를 지원하지 않아요. 크롬이나 사파리 최신 버전에서 해 주세요.';return;}
+  lock(true);$('fallback').hidden=true;
+  try{
+    const base=settings(),years=[];for(let y=2026;y>=2000;y-=MOBILE?2:1)years.push(y);if(years[years.length-1]!==2000)years.push(2000);
+    const frames=[];
+    for(let i=0;i<years.length;i++){$('status').textContent=`영상 장면 만드는 중 ${i+1}/${years.length}`;
+      const mark=temps.length,fr=await renderWith(src,Object.assign({},base,{year:years[i],ov:{}}),'video',faces,true);frames.push(fr);releaseSince(mark,frames);await sleep(0);}
+    const V=mk(1080,1920),x=V.getContext('2d'),stream=V.captureStream(30),rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8e6}),chunks=[];
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+    const done=new Promise(r=>rec.onstop=r);
+    const HOLD0=1,SWEEP=5,HOLD1=1.5,T=HOLD0+SWEEP+HOLD1,ar=src.width/src.height,box={w:1000,h:1340},f=fitRect(src.width,src.height,box.w,box.h,false),px=(1080-f.w)/2,py=230+(box.h-f.h)/2;
+    const draw=t=>{
+      const u=t<HOLD0?0:t>HOLD0+SWEEP?1:(t-HOLD0)/SWEEP,fi=u*(frames.length-1),i0=Math.floor(fi),i1=Math.min(frames.length-1,i0+1),mx=fi-i0;
+      x.fillStyle='#0F1017';x.fillRect(0,0,1080,1920);
+      x.imageSmoothingEnabled=base.mode!=='pixel';x.globalAlpha=1;x.drawImage(frames[i0],px,py,f.w,f.h);if(mx>0){x.globalAlpha=mx;x.drawImage(frames[i1],px,py,f.w,f.h);x.globalAlpha=1;}
+      x.imageSmoothingEnabled=true;x.textAlign='center';
+      x.fillStyle='#F28A2E';x.font='60px VT323, "Courier New", monospace';x.fillText('화질 타임머신',540,150);
+      const yr=years[Math.round(fi)];x.font='260px VT323, "Courier New", monospace';x.fillText(String(yr),540,1790);
+      x.fillStyle='#F3EFE4';x.font='64px "Do Hyeon", "Noto Sans KR", sans-serif';x.fillText(eraOf(yr).era,540,1860);
+    };
+    draw(0);rec.start(250);const t0=performance.now();$('status').textContent='영상 녹화 중이에요… 이 화면을 닫지 마세요.';
+    await new Promise(res=>{const step=()=>{const t=(performance.now()-t0)/1000;draw(Math.min(t,T));if(t>=T)return res();requestAnimationFrame(step);};requestAnimationFrame(step);});
+    await sleep(200);rec.stop();await done;stream.getTracks().forEach(t=>t.stop());
+    const ext=mime.includes('mp4')?'mp4':'webm',blob=new Blob(chunks,{type:mime.split(';')[0]});
+    frames.forEach(c=>{c.width=0;c.height=0;});
+    await save(blob,`30man_timemachine.${ext}`,'video');
+  }catch(e){$('status').textContent='영상을 만들지 못했어요. 사진 크기를 줄여 다시 해 보세요.';}
+  finally{lock(false);}
+});
+
+/* batch → zip (stored, no compression; PNGs are already compressed) */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],central=[];let off=0,cd=0;
+  for(const f of files){const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x21,true);h.setUint32(14,crc,true);h.setUint32(18,sz,true);h.setUint32(22,sz,true);h.setUint16(26,nm.length,true);
+    parts.push(h.buffer,nm,f.data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(14,0x21,true);c.setUint32(16,crc,true);c.setUint32(20,sz,true);c.setUint32(24,sz,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    central.push(c.buffer,nm);cd+=46+nm.length;off+=30+nm.length+sz;}
+  const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cd,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...central,e.buffer],{type:'application/zip'});
+}
+$('batchFiles').addEventListener('change',async e=>{
+  const list=[...e.target.files].filter(f=>!f.type||f.type.startsWith('image/'));e.target.value='';
+  if(!list.length||working)return;lock(true);$('fallback').hidden=true;
+  const pr=PRESETS.find(p=>p.id===$('batchPreset').value),st=settings(),out=[],blobs=[],skipped=[];
+  try{
+    for(let i=0;i<list.length;i++){
+      const mark=temps.length;$('status').textContent=`변환 중 ${i+1}/${list.length} · ${list[i].name}`;
+      let S;try{S=await decode(list[i]);}catch(err){skipped.push(list[i].name);continue;}
+      let fl=[];if(st.faceAuto){try{fl=await detectFaces(S);}catch(err){}}
+      const c=await renderWith(S,st,'full',fl,false),fin=await finalize(c,pr,st,S,fl),blob=await toBlob(fin,'image/png');
+      const base=(list[i].name||`photo${i+1}`).replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|]/g,'_');
+      out.push({name:`${pad(i+1)}_${base}_${st.year}.png`,data:new Uint8Array(await blob.arrayBuffer())});blobs.push(blob);
+      releaseSince(mark);await sleep(0);
+    }
+    if(!out.length){$('status').textContent='변환할 수 있는 사진이 없었어요. JPG나 PNG로 올려 주세요.';return;}
+    const zipBlob=makeZip(out),name=`30man_${st.year}_${out.length}장.zip`;
+    await save(zipBlob,name,'zip',blobs);if(skipped.length)$('status').textContent+=` · 못 연 파일 ${skipped.length}개`;
+  }catch(err){$('status').textContent='여러 장 변환 중 문제가 생겼어요. 장수를 줄이거나 크기를 SNS로 바꿔 다시 해 보세요.';}
+  finally{lock(false);}
+});
+
+/* ---------- start ---------- */
+renderPresets();setSplit(50);syncAll();
+Promise.race([document.fonts?document.fonts.load('400 40px VT323','’0123456789 원본지금'):Promise.resolve(),sleep(2500)])
+  .catch(()=>{}).then(()=>{setSource(sample(),'예시 사진이에요. 내 사진을 올리거나, 끌어다 놓거나, 붙여 넣으세요.');window.__ready=true;});
+if(MOBILE){$('fileLabel').textContent='앨범에서 고르기';$('camBtn').hidden=false;}
+$('cam').addEventListener('change',e=>{loadFile(e.target.files[0]);e.target.value='';});
+if(MOBILE)$('pickHint').hidden=false;
+window.__tm={setYear,setExpo:v=>{expo=v;syncAll();schedule();},setMode:m=>{mode=m;syncAll();schedule();},loadFile,get faces(){return faces;},detectFaces,setSource,decode};
+})();
+</script>
+</body>
+</html>
